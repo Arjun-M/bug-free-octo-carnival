@@ -43,7 +43,7 @@ Community leaders are responsible for clarifying standards and enforcing them fa
 If you witness or experience unacceptable behavior:
 
 1. **Direct Communication**: If safe and comfortable, address the person directly
-2. **Report to Maintainers**: Email conduct@isobox.dev with:
+2. **Report to Maintainers**: Email arjun@builderengine.space with:
    - Description of the incident
    - People involved
    - When/where it occurred
