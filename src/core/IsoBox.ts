@@ -1,5 +1,5 @@
 /**
- * @fileoverview IsoBox main class - core sandbox orchestration (Session 3 Update)
+ * @fileoverview IsoBox main class - Session 5 Update with Pool & Sessions
  */
 
 import { EventEmitter } from 'events';
@@ -8,52 +8,32 @@ import type {
   RunOptions,
   ProjectOptions,
   SessionOptions,
+  PoolOptions,
   GlobalMetrics,
-  Session,
 } from './types.js';
-import { SandboxError, TimeoutError } from './types.js';
+import { SandboxError } from './types.js';
 import { CompiledScript } from './CompiledScript.js';
 import { IsolateManager } from '../isolate/IsolateManager.js';
+import { IsolatePool } from '../isolate/IsolatePool.js';
 import { ExecutionEngine } from '../execution/ExecutionEngine.js';
 import { ExecutionContext } from '../execution/ExecutionContext.js';
 import { MemFS } from '../filesystem/MemFS.js';
+import { ModuleSystem } from '../modules/ModuleSystem.js';
+import { ProjectLoader } from '../project/ProjectLoader.js';
+import { SessionManager, type SessionInfo } from '../session/SessionManager.js';
 import { logger } from '../utils/Logger.js';
 
 /**
- * Main IsoBox sandbox class providing secure code execution
- *
- * Test Scenarios:
- * ===============
- * Test 1: while(true) {} → should timeout in <timeout>ms + 100ms max
- *   - Infinite loop detection triggers within 100ms of first CPU saturation
- *   - Isolate is disposed immediately, no zombie processes
- *
- * Test 2: await new Promise(r => setTimeout(r, 10000)) with 1000ms timeout
- *   - Promise-based async code is subject to timeout
- *   - Promise.race with timeout triggers at 1000ms
- *   - Isolate is killed, no dangling promises
- *
- * Test 3: Heavy computation (complex recursion, factorials)
- *   - CPU time tracking works correctly via isolate.cpuTime
- *   - CPU percent = (cpuTime / wallTime) accurately reflects usage
- *   - Metrics show peak and average CPU consumption
- *
- * Test 4: File I/O with $fs object
- *   - $fs.write('/sandbox/test.txt', 'hello') writes content
- *   - $fs.read('/sandbox/test.txt') returns content
- *   - Quota limits enforced on write operations
- *
- * Test 5: File watching
- *   - $fs.watch('/sandbox/file.txt', callback) notifies on changes
- *   - Multiple writes trigger multiple callbacks
- *   - Watchers cleaned up on dispose
+ * Main IsoBox sandbox class with pooling and sessions
  */
 export class IsoBox {
   private isolateManager: IsolateManager;
+  private isolatePool: IsolatePool | null = null;
   private executionEngine: ExecutionEngine;
   private memfs: MemFS;
+  private moduleSystem: ModuleSystem | null = null;
+  private sessionManager: SessionManager;
   private eventEmitter: EventEmitter;
-  private sessions: Map<string, Session> = new Map();
   private globalMetrics: GlobalMetrics;
   private disposed: boolean = false;
 
@@ -63,6 +43,7 @@ export class IsoBox {
   private memoryLimit: number;
   private strictTimeout: boolean;
   private fsMaxSize: number;
+  private usePooling: boolean;
   private options: IsoBoxOptions;
 
   /**
@@ -75,15 +56,27 @@ export class IsoBox {
     this.cpuTimeLimit = options.cpuTimeLimit ?? 10000;
     this.memoryLimit = options.memoryLimit ?? 128 * 1024 * 1024;
     this.strictTimeout = options.strictTimeout ?? true;
-    this.fsMaxSize = options.filesystem?.maxSize ?? 64 * 1024 * 1024; // 64MB default for MemFS
+    this.fsMaxSize = options.filesystem?.maxSize ?? 64 * 1024 * 1024;
+    this.usePooling = options.usePooling ?? false;
 
     this.isolateManager = new IsolateManager();
     this.executionEngine = new ExecutionEngine();
+    this.sessionManager = new SessionManager(options.sessionCleanupInterval);
     this.memfs = new MemFS({
       maxSize: this.fsMaxSize,
       root: options.filesystem?.root ?? '/',
     });
     this.eventEmitter = new EventEmitter();
+
+    // Initialize isolate pool if enabled
+    if (this.usePooling && options.pool) {
+      this.isolatePool = new IsolatePool(options.pool);
+    }
+
+    // Initialize module system if require options provided
+    if (options.require) {
+      this.moduleSystem = new ModuleSystem(options.require, this.memfs);
+    }
 
     this.globalMetrics = {
       totalExecutions: 0,
@@ -99,12 +92,12 @@ export class IsoBox {
     this.wireUpExecutionEngine();
 
     logger.info(
-      `IsoBox initialized (timeout=${this.timeout}ms, fsSize=${(this.fsMaxSize / 1024 / 1024).toFixed(2)}MB)`
+      `IsoBox initialized (timeout=${this.timeout}ms, fsSize=${(this.fsMaxSize / 1024 / 1024).toFixed(2)}MB, pooling=${this.usePooling})`
     );
   }
 
   /**
-   * Wire up execution engine events to main event emitter
+   * Wire up execution engine events
    */
   private wireUpExecutionEngine(): void {
     this.executionEngine.on('execution:start', (event) => {
@@ -156,7 +149,7 @@ export class IsoBox {
    * Execute JavaScript/TypeScript code in a sandbox
    * @param code The code to execute
    * @param opts Execution options
-   * @returns Promise resolving to the execution result
+   * @returns Promise resolving to execution result
    */
   async run<T = any>(code: string, opts: RunOptions = {}): Promise<T> {
     this.ensureNotDisposed();
@@ -167,11 +160,6 @@ export class IsoBox {
       }
 
       const timeout = opts.timeout ?? this.timeout;
-      const cpuTimeLimit = this.cpuTimeLimit;
-      const memoryLimit = this.memoryLimit;
-
-      logger.debug(`Running code with timeout=${timeout}ms`);
-
       const executionId = ExecutionContext.generateId();
 
       this.eventEmitter.emit('execution', {
@@ -183,8 +171,15 @@ export class IsoBox {
       });
 
       try {
-        // Simulate execution (real isolated-vm in session 4)
-        const result = await this.simulateExecution<T>(code, timeout);
+        // Use pool if enabled
+        let result: T;
+        if (this.isolatePool) {
+          result = await this.isolatePool.execute<T>(code);
+        } else {
+          // Simulate execution (real isolated-vm in session 6)
+          result = await this.simulateExecution<T>(code, timeout);
+        }
+
         this.recordMetrics(timeout, 0, 0);
 
         this.eventEmitter.emit('execution', {
@@ -233,30 +228,31 @@ export class IsoBox {
   /**
    * Execute a multi-file project
    * @param project Project configuration
-   * @returns Promise resolving to the execution result
+   * @returns Promise resolving to execution result
    */
   async runProject<T = any>(project: ProjectOptions): Promise<T> {
     this.ensureNotDisposed();
 
-    if (!project.files || project.files.length === 0) {
-      throw new SandboxError('Project must have at least one file', 'EMPTY_PROJECT');
+    try {
+      const prepared = ProjectLoader.loadProject(project);
+      logger.info(`Loading project with ${prepared.fileCount} files`);
+
+      ProjectLoader.writeProjectFiles(project, this.memfs);
+
+      const entrypointBuffer = this.memfs.read(project.entrypoint);
+      const entrypointCode = entrypointBuffer.toString();
+
+      const timeout = project.timeout ?? this.timeout;
+      return this.run<T>(entrypointCode, {
+        filename: project.entrypoint,
+        timeout,
+        language: 'javascript',
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error(`Project execution failed: ${err.message}`);
+      throw err;
     }
-
-    const timeout = project.timeout ?? this.timeout;
-    const entrypoint = project.files.find((f) => f.path === project.entrypoint);
-
-    if (!entrypoint) {
-      throw new SandboxError(
-        `Entrypoint file ${project.entrypoint} not found`,
-        'ENTRYPOINT_NOT_FOUND'
-      );
-    }
-
-    return this.run<T>(entrypoint.code, {
-      filename: project.entrypoint,
-      timeout,
-      language: entrypoint.language ?? 'javascript',
-    });
   }
 
   /**
@@ -289,31 +285,15 @@ export class IsoBox {
 
   /**
    * Create a persistent execution session
-   * @param id Unique session identifier
+   * @param id Session identifier
    * @param opts Session options
-   * @returns Promise resolving to the session
+   * @returns The created session
    */
-  async createSession(id: string, opts: SessionOptions = {}): Promise<Session> {
+  async createSession(id: string, opts: SessionOptions = {}): Promise<any> {
     this.ensureNotDisposed();
 
-    if (this.sessions.has(id)) {
-      throw new SandboxError(`Session ${id} already exists`, 'SESSION_EXISTS');
-    }
-
-    const now = Date.now();
-    const session: Session = {
-      id,
-      created: now,
-      expiresAt: now + (opts.ttl ?? 3600000),
-      state: {},
-      executionCount: 0,
-      maxExecutions: opts.maxExecutions ?? 0,
-      lastAccessed: now,
-      persistent: opts.persistent ?? true,
-    };
-
-    this.sessions.set(id, session);
-    this.eventEmitter.emit('session:created', { sessionId: id, timestamp: now });
+    const session = this.sessionManager.createSession(id, opts);
+    this.eventEmitter.emit('session:created', { sessionId: id, timestamp: Date.now() });
 
     return session;
   }
@@ -321,34 +301,73 @@ export class IsoBox {
   /**
    * Get an existing session
    * @param id Session identifier
-   * @returns The session if found, undefined otherwise
+   * @returns The session or undefined
    */
-  getSession(id: string): Session | undefined {
-    const session = this.sessions.get(id);
-
-    if (session && session.expiresAt < Date.now()) {
-      this.sessions.delete(id);
-      return undefined;
-    }
-
+  getSession(id: string): any {
+    const session = this.sessionManager.getSession(id);
     if (session) {
-      session.lastAccessed = Date.now();
+      return session;
+    }
+    return undefined;
+  }
+
+  /**
+   * List all active sessions
+   * @returns Array of session info
+   */
+  listSessions(): SessionInfo[] {
+    return this.sessionManager.listSessions();
+  }
+
+  /**
+   * Delete a session
+   * @param id Session identifier
+   */
+  async deleteSession(id: string): Promise<void> {
+    await this.sessionManager.deleteSession(id);
+  }
+
+  /**
+   * Warm up the isolate pool
+   * @param code Optional warmup code
+   */
+  async warmupPool(code?: string): Promise<void> {
+    this.ensureNotDisposed();
+
+    if (!this.isolatePool) {
+      throw new SandboxError('Pooling not enabled', 'POOLING_DISABLED');
     }
 
-    return session;
+    await this.isolatePool.warmup(code);
+  }
+
+  /**
+   * Get pool statistics
+   * @returns Pool stats or null if pooling disabled
+   */
+  getPoolStats(): any {
+    if (!this.isolatePool) {
+      return null;
+    }
+    return this.isolatePool.getStats();
   }
 
   /**
    * Get the virtual filesystem
-   * @returns MemFS instance
    */
   get fs(): MemFS {
     return this.memfs;
   }
 
   /**
-   * Get global metrics across all executions
-   * @returns Metrics object
+   * Get the module system
+   */
+  getModuleSystem(): ModuleSystem | null {
+    return this.moduleSystem;
+  }
+
+  /**
+   * Get global metrics
    */
   getMetrics(): GlobalMetrics {
     return { ...this.globalMetrics };
@@ -356,9 +375,6 @@ export class IsoBox {
 
   /**
    * Record execution metrics
-   * @param duration Execution time in milliseconds
-   * @param cpuTime CPU time used in milliseconds
-   * @param memory Memory used in bytes
    */
   private recordMetrics(duration: number, cpuTime: number, memory: number): void {
     this.globalMetrics.totalExecutions++;
@@ -369,7 +385,6 @@ export class IsoBox {
     );
     this.globalMetrics.lastExecutionTime = Date.now();
 
-    // Calculate rolling average
     const prevTotal = this.globalMetrics.totalExecutions - 1;
     const prevAvg = this.globalMetrics.avgTime;
     this.globalMetrics.avgTime =
@@ -377,25 +392,21 @@ export class IsoBox {
   }
 
   /**
-   * Register an event listener
-   * @param event Event name
-   * @param handler Event handler function
+   * Register event listener
    */
   on(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.on(event, handler);
   }
 
   /**
-   * Remove an event listener
-   * @param event Event name
-   * @param handler Event handler function
+   * Remove event listener
    */
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
   }
 
   /**
-   * Dispose of the sandbox and release all resources
+   * Dispose sandbox and release resources
    */
   async dispose(): Promise<void> {
     if (this.disposed) {
@@ -407,21 +418,26 @@ export class IsoBox {
     try {
       this.executionEngine.dispose();
       await this.isolateManager.disposeAll();
+      if (this.isolatePool) {
+        await this.isolatePool.dispose();
+      }
+      await this.sessionManager.disposeAll();
       this.memfs.clear();
+      if (this.moduleSystem) {
+        this.moduleSystem.clear();
+      }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       logger.error(`Error during disposal: ${err.message}`);
       this.emit('error', err);
     }
 
-    this.sessions.clear();
     this.eventEmitter.removeAllListeners();
-
     logger.info('IsoBox disposed');
   }
 
   /**
-   * Check if sandbox is disposed
+   * Check if disposed
    */
   private ensureNotDisposed(): void {
     if (this.disposed) {
@@ -430,37 +446,44 @@ export class IsoBox {
   }
 
   /**
-   * Emit an event
-   * @param event Event name
-   * @param data Event data
+   * Emit event
    */
   private emit(event: string, data?: any): void {
     this.eventEmitter.emit(event, data);
   }
 
   /**
-   * Simulate code execution (placeholder for real execution)
-   * @param code Code to execute
-   * @param timeout Execution timeout
-   * @returns Simulation result
+   * Simulate code execution
    */
   private async simulateExecution<T>(_code: string, _timeout: number): Promise<T> {
-    // Placeholder implementation for Session 3
-    // Real isolated-vm execution will be implemented in session 4
     return undefined as unknown as T;
   }
 
   /**
-   * Get execution engine (for advanced usage)
+   * Get execution engine
    */
   getExecutionEngine(): ExecutionEngine {
     return this.executionEngine;
   }
 
   /**
-   * Get isolate manager (for advanced usage)
+   * Get isolate manager
    */
   getIsolateManager(): IsolateManager {
     return this.isolateManager;
+  }
+
+  /**
+   * Get isolate pool
+   */
+  getIsolatePool(): IsolatePool | null {
+    return this.isolatePool;
+  }
+
+  /**
+   * Get session manager
+   */
+  getSessionManager(): SessionManager {
+    return this.sessionManager;
   }
 }
