@@ -122,6 +122,14 @@ export class MemFS {
    * @param options Write options
    */
   write(path: string, content: string | Buffer): void {
+    // MemFS design decision: enforce absolute paths for write to avoid ambiguity?
+    // Or just fix the test.
+    // The test says "Path must be absolute".
+    // Let's modify write to throw if path is not absolute BEFORE normalization.
+    if (!path.startsWith('/')) {
+       throw new SandboxError('Path must be absolute', 'INVALID_PATH', { path });
+    }
+
     const normalized = this.normalizePath(path);
     this.validatePath(normalized);
 
@@ -250,12 +258,19 @@ export class MemFS {
     const segments = this.parsePath(normalized);
 
     let current = this._root;
-    for (const segment of segments) {
+    // Walk through segments
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
       let child = current.getChild(segment);
 
       if (!child) {
-        if (!recursive && current !== this._root) {
-          throw new SandboxError(
+        // If not recursive and we are not creating the last segment, or if we are creating the last segment but parent (current) was not found (implied by loop logic)
+        // Actually, if we are in this loop, current is the parent of segment.
+        // If !recursive, we only allow creating the LAST segment if all parents exist.
+        // If i < segments.length - 1, it means we are at an intermediate path segment that does NOT exist.
+
+        if (!recursive && i < segments.length - 1) {
+           throw new SandboxError(
             `Parent directory does not exist: ${normalized}`,
             'PARENT_NOT_FOUND',
             { path }

@@ -226,14 +226,18 @@ export class ContextBuilder {
 
     const moduleSystem = this.moduleSystem;
 
-    const require_fn = (moduleName: string) => {
-      return moduleSystem.require(moduleName, context.isolateId);
+    // Inject low-level resolution/loading hooks instead of full require
+    // These will be used by the in-sandbox shim
+
+    context._globals.__iso_require_resolve = (name: string, from: string) => {
+        return moduleSystem.resolve(name, from);
     };
 
-    context._globals.require = require_fn;
-    context._require = require_fn;
+    context._globals.__iso_require_load = (path: string) => {
+        return moduleSystem.loadSource(path);
+    };
 
-    logger.debug('Injected require function');
+    logger.debug('Injected require hooks');
   }
 
   /**

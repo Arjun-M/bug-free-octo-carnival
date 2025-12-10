@@ -13,11 +13,14 @@ import type {
 } from './types.js';
 import { SandboxError, TimeoutError } from './types.js';
 import { CompiledScript } from './CompiledScript.js';
-import { IsolateManager } from '../isolate/IsolateManager.js';
+import ivm from 'isolated-vm';
+import { IsolateManager } from './IsolateManager.js';
 import { ExecutionEngine } from '../execution/ExecutionEngine.js';
 import { ExecutionContext } from '../execution/ExecutionContext.js';
 import { MemFS } from '../filesystem/MemFS.js';
 import { logger } from '../utils/Logger.js';
+import { ContextBuilder } from '../context/ContextBuilder.js';
+import { ModuleSystem } from '../modules/ModuleSystem.js';
 
 /**
  * Main IsoBox sandbox class providing secure code execution
@@ -52,6 +55,7 @@ export class IsoBox {
   private isolateManager: IsolateManager;
   private executionEngine: ExecutionEngine;
   private memfs: MemFS;
+  private moduleSystem: ModuleSystem;
   private eventEmitter: EventEmitter;
   private sessions: Map<string, Session> = new Map();
   private globalMetrics: GlobalMetrics;
@@ -83,6 +87,22 @@ export class IsoBox {
       maxSize: this.fsMaxSize,
       root: options.filesystem?.root ?? '/',
     });
+
+    // Initialize module system
+    const requireOptions = options.require || {
+      external: false,
+      whitelist: [],
+      allowBuiltins: false,
+      memfs: this.memfs
+    };
+
+    // Ensure memfs is passed
+    if (!requireOptions.memfs) {
+        requireOptions.memfs = this.memfs;
+    }
+
+    this.moduleSystem = new ModuleSystem(requireOptions as any, this.memfs);
+
     this.eventEmitter = new EventEmitter();
 
     this.globalMetrics = {
@@ -444,10 +464,213 @@ export class IsoBox {
    * @param timeout Execution timeout
    * @returns Simulation result
    */
-  private async simulateExecution<T>(_code: string, _timeout: number): Promise<T> {
-    // Placeholder implementation for Session 3
-    // Real isolated-vm execution will be implemented in session 4
-    return undefined as unknown as T;
+  private async simulateExecution<T>(code: string, timeout: number): Promise<T> {
+    // Use real ExecutionEngine if possible
+    // Create an isolate
+    const isolate = this.isolateManager.createIsolate({
+      memoryLimit: this.memoryLimit,
+    });
+
+    this.isolateManager.trackIsolate('run-' + Date.now(), isolate);
+
+    try {
+      // Build context
+      // Merge console options with defaults but ensure 'inherit' is default for tests unless overridden?
+      // Actually IsoBox constructor defaults should be respected.
+      const consoleOptions = {
+          mode: 'inherit' as const,
+          ...this.options.console
+      };
+
+      const builder = new ContextBuilder({
+        memfs: this.memfs,
+        moduleSystem: this.moduleSystem,
+        console: consoleOptions,
+        require: this.options.require,
+        env: this.options.env,
+        sandbox: this.options.sandbox
+      });
+
+      // Note: In real world, we need to inject this into isolated-vm context.
+      // But ExecutionEngine expects an existing context.
+      // ExecutionEngine.setupExecutionContext creates a context.
+
+      const context = this.executionEngine.setupExecutionContext(isolate, {
+        timeout,
+        cpuTimeLimit: this.cpuTimeLimit,
+        memoryLimit: this.memoryLimit,
+        strictTimeout: this.strictTimeout,
+      });
+
+      // Build context object
+      const contextData = await builder.build('run-' + Date.now());
+
+      // Inject globals
+      if (contextData._globals) {
+        // Set of built-ins that usually exist in isolated-vm context and should not be overwritten with host versions
+        const skipBuiltins = new Set([
+            'Object', 'Array', 'String', 'Number', 'Boolean', 'Date', 'Math', 'JSON', 'Promise', 'Error',
+            'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'EvalError', 'URIError',
+            'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol', 'RegExp', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+            'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent'
+        ]);
+
+        for (const [key, value] of Object.entries(contextData._globals)) {
+          if (skipBuiltins.has(key)) {
+              continue;
+          }
+
+          // Note: In a real robust implementation, we would handle references and proxies carefully.
+          // Here we do simple injection.
+          // Functions need special handling if they cross boundary (Reference).
+          // For integration tests passing, we might need to handle primitives and simple objects.
+
+          if (key === 'global') {
+             // global references itself, we can skip or set ref if needed
+             // context.global.setSync('global', context.global.derefInto());
+             // But context.global IS the global object.
+             context.global.setSync('global', context.global.derefInto());
+             continue;
+          }
+
+          try {
+              const transferValue = this.prepareForTransfer(value);
+              context.global.setSync(key, transferValue, { copy: true });
+          } catch (err) {
+              logger.warn(`Failed to inject global ${key}: ${err}`);
+          }
+        }
+      }
+
+      // Inject require shim if enabled
+      if (this.options.require) {
+          const shim = `
+            (function() {
+                const _modules = {};
+                const _resolve = globalThis.__iso_require_resolve;
+                const _load = globalThis.__iso_require_load;
+
+                if (!_resolve || !_load) return;
+
+                function require(name) {
+                    // Simple resolving relative to current module (not implemented fully here, assumes root for now or handled by host)
+                    // We need 'current path' context. For entrypoint, it is root.
+                    const fromPath = '/'; // TODO: Track current module path
+
+                    const resolved = _resolve(name, fromPath);
+                    if (_modules[resolved]) {
+                        return _modules[resolved].exports;
+                    }
+
+                    const source = _load(resolved);
+                    const module = { exports: {} };
+                    _modules[resolved] = module;
+
+                    // Wrap and execute
+                    const wrapper = new Function('module', 'exports', 'require', source);
+                    wrapper(module, module.exports, require);
+
+                    return module.exports;
+                }
+
+                globalThis.require = require;
+            })();
+          `;
+
+          await context.evalClosure(shim, [], { result: { copy: true } });
+      }
+
+      const result = await this.executionEngine.execute<T>(code, isolate, context, {
+        timeout,
+        cpuTimeLimit: this.cpuTimeLimit,
+        memoryLimit: this.memoryLimit,
+        strictTimeout: this.strictTimeout,
+        code,
+      });
+
+      if (result.error) {
+        // Attempt to reconstruct useful error
+        const message = result.error.message || 'Unknown Error';
+        const err = new Error(message);
+
+        // Use sanitized stack if available, otherwise just message
+        if (result.error.stack) {
+            err.stack = result.error.stack;
+        } else {
+            // Remove host stack trace by overwriting it
+            err.stack = `${result.error.code || 'Error'}: ${message}\n    at [sandbox]`;
+        }
+
+        // Attach additional info
+        (err as any).code = result.error.code;
+        throw err;
+      }
+
+      return result.value;
+    } finally {
+      // Dispose isolate after run
+      // isolate.dispose(); // IsolateManager handles this if we tracked it?
+      // No, we should dispose it here for single run.
+      // But we tracked it, so we should remove it.
+      // Ideally use a try-finally block.
+      // Since it's a one-off run, we can dispose it.
+      isolate.dispose();
+    }
+  }
+
+  /**
+   * Prepare a value for transfer to isolated-vm
+   * Recursively wraps functions in ivm.Callback
+   */
+  private prepareForTransfer(value: any): any {
+    if (typeof value === 'function') {
+        return new ivm.Callback((...args: any[]) => {
+            try {
+                const result = value(...args);
+
+                // Handle Promise return values (async host functions)
+                if (result instanceof Promise) {
+                    // isolated-vm supports Promise transfer if resolved value is transferable
+                    return result.then(res => {
+                        if (typeof res === 'object' && res !== null) {
+                            // Return ExternalCopy directly to allow transfer to isolate
+                            try { return new ivm.ExternalCopy(res); } catch { return res; }
+                        }
+                        return res;
+                    });
+                }
+
+                // Handle complex return values by copying
+                if (typeof result === 'object' && result !== null) {
+                    try {
+                        // Return ExternalCopy directly to allow transfer to isolate
+                        return new ivm.ExternalCopy(result);
+                    } catch (e) {
+                        // If copy fails (e.g. Host objects like Timer), return undefined to avoid crash
+                        // This implies complex host objects are not transferable/referencable directly via this mechanism
+                        return undefined;
+                    }
+                }
+                return result;
+            } catch (err) {
+                throw err;
+            }
+        });
+    }
+
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(item => this.prepareForTransfer(item));
+    }
+
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+        result[k] = this.prepareForTransfer(v);
+    }
+    return result;
   }
 
   /**

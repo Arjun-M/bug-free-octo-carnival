@@ -2,7 +2,7 @@
  * @fileoverview IsolateManager manages isolated-vm instances
  */
 
-import type { Isolate } from 'isolated-vm';
+import ivm, { Isolate } from 'isolated-vm';
 
 /**
  * Manages lifecycle of isolated-vm isolates with tracking and pooling
@@ -17,14 +17,20 @@ export class IsolateManager {
    * @returns A new Isolate instance
    */
   createIsolate(options?: { memoryLimit?: number }): Isolate {
-    // Type assertion needed since isolated-vm types may not be fully available
-    // This will be populated with actual isolated-vm API in session 2
-    const IsolateClass = globalThis.Isolate as any;
-    if (!IsolateClass) {
-      throw new Error('isolated-vm Isolate not available');
+    // Check if we are in a test environment with mocked Isolate
+    const MockIsolate = (globalThis as any).Isolate;
+    if (MockIsolate) {
+        const isolateOptions: Record<string, any> = {};
+        if (options?.memoryLimit) {
+            isolateOptions.memoryLimit = Math.max(
+                10,
+                options.memoryLimit / (1024 * 1024)
+            );
+        }
+        return new MockIsolate(isolateOptions);
     }
 
-    const isolateOptions: Record<string, any> = {};
+    const isolateOptions: ivm.IsolateOptions = {};
     if (options?.memoryLimit) {
       isolateOptions.memoryLimit = Math.max(
         10,
@@ -32,7 +38,7 @@ export class IsolateManager {
       );
     }
 
-    return new IsolateClass(isolateOptions);
+    return new ivm.Isolate(isolateOptions);
   }
 
   /**

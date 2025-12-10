@@ -81,27 +81,48 @@ export class ErrorSanitizer {
   private sanitizeStack(stack: string): string {
     let sanitized = stack;
 
-    // Remove file:// URLs and absolute paths
-    sanitized = sanitized.replace(/file:\/\/[^\s)]+/g, '[sandbox]');
-    sanitized = sanitized.replace(/\/[^\s):]+\/node_modules\/[^\s)]+/g, '[node_modules]');
+    // 1. Remove Node.js internals first
+    sanitized = sanitized.replace(/at .*node:internal\/.*\n/g, '');
+    sanitized = sanitized.replace(/at .*\/node_modules\/.*\n/g, '');
+    sanitized = sanitized.replace(/at .*Module._compile.*\n/g, '');
+    sanitized = sanitized.replace(/at .*Object.Module._extensions.*\n/g, '');
 
-    // Remove Node.js internal module references
+    // 2. Aggressively strip absolute paths (Unix/Windows)
+    sanitized = sanitized.replace(/\/[a-zA-Z0-9_\-\.\/]+/g, (match) => {
+       if (match.includes('node_modules')) return '[node_modules]';
+       return '[sandbox]';
+    });
+    // Windows paths
+    sanitized = sanitized.replace(/[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+/g, (match) => {
+        if (match.includes('node_modules')) return '[node_modules]';
+        return '[sandbox]';
+    });
+
+    // 3. Normalize location
+    // at Object.<anonymous> ([sandbox]:592:21)
     sanitized = sanitized.replace(
-      /at.*\(node:internal\/[^\)]+\)/g,
-      'at [node:internal]'
-    );
-    sanitized = sanitized.replace(/at (Module|Function)_runMain.*\n/g, '');
-
-    // Replace host directory structures with [sandbox]
-    sanitized = sanitized.replace(
-      /at (\w+) \(\/[^)]*\/([^/:]+):(\d+):(\d+)\)/g,
-      'at $1 ([sandbox:$3:$4])'
+        /at (.+) \((.+):(\d+):(\d+)\)/g,
+        (match, fn, path, line, col) => {
+           // If the path was sanitized to [sandbox], keep the line/col but format nicely
+           if (path.includes('[sandbox]')) return `at ${fn} ([sandbox:${line}:${col}])`;
+           return match;
+        }
     );
 
-    // Remove duplicate [sandbox] entries
-    sanitized = sanitized.replace(/\[sandbox\]\s*\[sandbox\]/g, '[sandbox]');
+    // 4. Remove stack lines that are just host noise (IsoBox internal calls)
+    const lines = sanitized.split('\n');
+    const filteredLines = lines.filter(line => {
+        // Keep lines that look like user code or generic errors
+        if (line.trim().startsWith('Error:')) return true;
+        if (line.trim().startsWith('at ')) {
+             // Filter out IsoBox internal methods if they appear
+             if (line.includes('IsoBox.') || line.includes('ExecutionEngine.')) return false;
+             return true;
+        }
+        return true;
+    });
 
-    return sanitized.trim();
+    return filteredLines.join('\n').trim();
   }
 
   /**

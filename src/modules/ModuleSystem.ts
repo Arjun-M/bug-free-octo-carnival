@@ -92,75 +92,105 @@ export class ModuleSystem {
   }
 
   /**
-   * Execute require() for a module
+   * Execute require() for a module - Legacy Host Execution
    * @param moduleName Module name or path
    * @param fromPath Path of requiring file
    * @returns Loaded module
    */
   require(moduleName: string, fromPath: string = '/'): any {
-    logger.debug(`require('${moduleName}') from ${fromPath}`);
+    // This is kept for backward compatibility if needed, but new logic splits resolve and loadSource
+    // Reuse resolve and load logic
+    const resolvedPath = this.resolve(moduleName, fromPath);
 
-    // Check mocks first (highest priority)
-    if (this.isMocked(moduleName)) {
-      return this.mocks.get(moduleName);
+    // For mocks and builtins, loadSource returns code. We need to eval it?
+    // Or we can short-circuit for Host execution.
+    if (resolvedPath.startsWith('mock:')) {
+        return this.mocks.get(resolvedPath.substring(5));
+    }
+    if (resolvedPath.startsWith('builtin:')) {
+        return this.loadBuiltin(resolvedPath.substring(8));
     }
 
-    // Check cache
-    if (this.cache.has(moduleName)) {
-      return this.cache.get(moduleName);
+    return this.loadVirtual(resolvedPath);
+  }
+
+  /**
+   * Resolve module path
+   * @param moduleName Module name or path
+   * @param fromPath Current path
+   * @returns Resolved absolute path or special identifier
+   */
+  resolve(moduleName: string, fromPath: string = '/'): string {
+    logger.debug(`resolving '${moduleName}' from ${fromPath}`);
+
+    // Check mocks
+    if (this.isMocked(moduleName)) {
+        return `mock:${moduleName}`;
     }
 
     // Check circular dependency
     const stack = this.circularDeps.getStack();
-    if (this.circularDeps.detectCircular(moduleName, stack)) {
-      const circlePath = this.circularDeps.getCircularPath(moduleName, stack);
-      throw new SandboxError(
-        `Circular dependency detected: ${circlePath?.join(' → ')}`,
-        'CIRCULAR_DEPENDENCY',
-        { module: moduleName, stack, circlePath }
-      );
+    // Use absolute path or module name for circular check
+    // Ideally we should resolve first then check circular on resolved path
+
+    // Virtual module
+    if (moduleName.startsWith('.') || moduleName.startsWith('/')) {
+        return this.importResolver.resolve(moduleName, fromPath);
     }
 
-    // Start loading tracking
-    this.circularDeps.startLoading(moduleName);
-
-    try {
-      let module: any;
-
-      // Resolve and load module
-      if (moduleName.startsWith('.') || moduleName.startsWith('/')) {
-        // Virtual module from MemFS
-        const resolved = this.importResolver.resolve(moduleName, fromPath);
-        module = this.loadVirtual(resolved);
-      } else if (this.isBuiltin(moduleName)) {
-        // Built-in module
+    // Built-in
+    if (this.isBuiltin(moduleName)) {
         if (!this.allowBuiltins) {
-          throw new SandboxError(
-            `Built-in module not allowed: ${moduleName}`,
-            'MODULE_NOT_ALLOWED',
-            { module: moduleName }
-          );
+             throw new SandboxError(`Built-in module not allowed: ${moduleName}`, 'MODULE_NOT_ALLOWED');
         }
-        module = this.loadBuiltin(moduleName);
-      } else if (this.isWhitelisted(moduleName)) {
-        // External module from node_modules or mock
-        module = this.loadExternal(moduleName);
-      } else {
-        throw new SandboxError(
-          `Module not whitelisted: ${moduleName}`,
-          'MODULE_NOT_WHITELISTED',
-          { module: moduleName, whitelist: Array.from(this.whitelist) }
-        );
+        return `builtin:${moduleName}`;
+    }
+
+    // External/Whitelisted
+    if (this.isWhitelisted(moduleName)) {
+        // Resolve to node_modules path in MemFS
+        return `/node_modules/${moduleName}/index.js`; // Simplified resolution for now
+    }
+
+    throw new SandboxError(`Module not whitelisted: ${moduleName}`, 'MODULE_NOT_WHITELISTED');
+  }
+
+  /**
+   * Load module source code
+   * @param path Resolved path or identifier
+   * @returns Source code
+   */
+  loadSource(path: string): string {
+      // Check circular on the resolved path
+      const stack = this.circularDeps.getStack();
+      if (this.circularDeps.detectCircular(path, stack)) {
+          const circlePath = this.circularDeps.getCircularPath(path, stack);
+          throw new SandboxError(`Circular dependency detected: ${circlePath?.join(' -> ')}`, 'CIRCULAR_DEPENDENCY');
       }
 
-      // Cache the module
-      this.cache.set(moduleName, module);
+      this.circularDeps.startLoading(path);
+      try {
+          if (path.startsWith('mock:')) {
+              const name = path.substring(5);
+              const mock = this.mocks.get(name);
+              // Return code that exports the mock
+              // We need to serialize the mock?
+              // For simple mocks:
+              return `module.exports = ${JSON.stringify(mock)};`;
+          }
 
-      return module;
-    } finally {
-      // Finish loading tracking
-      this.circularDeps.finishLoading(moduleName);
-    }
+          if (path.startsWith('builtin:')) {
+              // Return code that exports stub
+              // We can't return host objects easily.
+              // We return a simple stub
+              return `module.exports = {}; // Builtin stub for ${path}`;
+          }
+
+          // Read from MemFS
+          return this.memfs.read(path).toString();
+      } finally {
+          this.circularDeps.finishLoading(path);
+      }
   }
 
   /**

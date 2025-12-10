@@ -67,6 +67,25 @@ export class ImportResolver {
     // Resolve against fromDir
     const resolved = this.joinPaths(fromDir, normalized);
 
+    // Check if it's a directory
+    let isDir = false;
+    try {
+        const stat = this.memfs.stat(resolved);
+        isDir = stat.isDirectory;
+    } catch {
+        // Does not exist
+    }
+
+    // If it's a directory, skip direct match unless we are looking for index
+    if (!isDir && this.memfs.exists(resolved)) {
+      return resolved;
+    }
+
+    // Try exact match with extensions (e.g. ./file.js -> /src/file.js)
+    if (!isDir && this.memfs.exists(resolved)) {
+        return resolved;
+    }
+
     // Try with extensions
     for (const ext of this.extensions) {
       const withExt = resolved + ext;
@@ -96,6 +115,20 @@ export class ImportResolver {
    * @returns Resolved path
    */
   private resolveAbsolute(specifier: string): string {
+    // Check if it's a directory
+    let isDir = false;
+    try {
+        const stat = this.memfs.stat(specifier);
+        isDir = stat.isDirectory;
+    } catch {
+        // Does not exist
+    }
+
+    // Try exact match first (if not directory)
+    if (!isDir && this.memfs.exists(specifier)) {
+      return specifier;
+    }
+
     // Try with extensions
     for (const ext of this.extensions) {
       const withExt = specifier + ext;
@@ -162,10 +195,14 @@ export class ImportResolver {
     }
 
     const parts = path.split('/').filter((p) => p.length > 0);
-    if (parts.length <= 1) {
-      return '/';
+    // If '/src/index.js' -> dirname is '/src'
+    // If '/index.js' -> dirname is '/'
+    if (parts.length === 0) {
+        return '/';
     }
 
+    // If just filename at root, return /
+    // This logic handles /src/lib correctly
     return '/' + parts.slice(0, -1).join('/');
   }
 
@@ -176,15 +213,9 @@ export class ImportResolver {
    * @returns Joined path
    */
   private joinPaths(base: string, relative: string): string {
-    if (relative === '.') {
-      return base;
-    }
-
-    if (base === '/') {
-      return '/' + relative;
-    }
-
-    return base + '/' + relative;
+    const combined = base === '/' ? `/${relative}` : `${base}/${relative}`;
+    // We need to resolve .. in the joined path
+    return this.normalizePath(combined);
   }
 
   /**
@@ -198,12 +229,18 @@ export class ImportResolver {
 
     for (const part of parts) {
       if (part === '..') {
-        result.pop();
+        if (result.length > 0) {
+           result.pop();
+        }
+        // else: accessing parent of root, ignore or stay at root
       } else {
         result.push(part);
       }
     }
 
-    return result.join('/');
+    // Ensure absolute path
+    const resolved = '/' + result.join('/');
+    // Handle root case
+    return resolved;
   }
 }
