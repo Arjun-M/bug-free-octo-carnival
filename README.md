@@ -1,6 +1,7 @@
 # IsoBox
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/npm/v/isobox.svg)](https://www.npmjs.com/package/isobox)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen)](#testing)

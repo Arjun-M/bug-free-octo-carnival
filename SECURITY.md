@@ -1,8 +1,39 @@
-# SECURITY.md - IsoBox Security Guide
+# SECURITY.md - IsoBox Security Policy
 
 ## Overview
 
 IsoBox is a production-grade JavaScript/TypeScript sandbox library that provides isolated code execution with strict security controls. This document outlines the security architecture, threat model, and best practices.
+
+## Vulnerability Reporting
+
+If you discover a security vulnerability, **please do not open a public issue**. Instead:
+
+1. **Email**: security@isobox.dev (create this before production)
+2. **Include**:
+   - Description of vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Suggested fix (if available)
+
+## Security Advisories
+
+We will issue security advisories for critical vulnerabilities. These will be published in the [Security Advisories](https://github.com/Arjun-M/Isobox/security/advisories) section of the repository and communicated via release notes.
+
+## Supported Versions
+
+| Version | Supported          |
+| ------- | ------------------ |
+| 1.x     | :white_check_mark: |
+| < 1.0   | :x:                |
+
+## Response Timeline
+
+We are committed to addressing security vulnerabilities promptly:
+
+- **Acknowledgment**: Within 48 hours of report receipt.
+- **Assessment**: We will assess the severity and impact within 5 business days.
+- **Fix**: We aim to provide a fix or workaround for critical vulnerabilities within 14 days.
+- **Disclosure**: We will coordinate the public disclosure date with the reporter.
 
 ## Threat Model
 
@@ -240,52 +271,12 @@ isobox.on('metrics:recorded', (metrics) => {
 - [ ] Backup security event logs
 - [ ] Alert on critical security violations
 
-## Vulnerability Reporting
-
-If you discover a security vulnerability, **please do not open a public issue**. Instead:
-
-1. **Email**: security@isobox.dev (create this before production)
-2. **Include**: 
-   - Description of vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if available)
-
-3. **Timeline**:
-   - We acknowledge within 48 hours
-   - We provide timeline for fix
-   - We coordinate disclosure date
-
 ## Compliance
 
 IsoBox follows security best practices from:
 - **OWASP**: Top 10 Web Application Security Risks
 - **CWE**: Common Weakness Enumeration
 - **NIST**: Cybersecurity Framework
-
-## Security Updates
-
-Security fixes are released as patch versions (X.Y.Z). Subscribe to release notifications to stay informed.
-
-## FAQ
-
-**Q: Can user code access the host filesystem?**
-A: No. Only virtual in-memory filesystem (MemFS) is available.
-
-**Q: Can user code escape the sandbox?**
-A: Extremely unlikely. V8 Isolate provides strong isolation. Requires V8 or Node.js vulnerability.
-
-**Q: Can user code kill the main process?**
-A: No. Each execution is isolated and can be terminated independently.
-
-**Q: Is user code completely isolated from other users?**
-A: Yes. Each execution gets its own V8 context and memory space.
-
-**Q: What about timing side-channels?**
-A: Not mitigated. Don't use for cryptographic operations.
-
-**Q: Can I trust this in production?**
-A: Yes, with proper configuration and monitoring. See Best Practices above.
 
 ---
 

@@ -1,302 +1,74 @@
-# CONTRIBUTING.md - IsoBox Contribution Guide
+# Contributing to IsoBox
 
-## Welcome! 👋
+First off, thanks for taking the time to contribute! IsoBox is a community-driven project and we value your input.
 
-Thank you for your interest in contributing to IsoBox. This document provides guidelines and instructions for contributing.
+## How to Contribute
 
-## Code of Conduct
+You can contribute in many ways:
 
-We are committed to providing a welcoming and inspiring community. All contributors are expected to:
+1.  **Reporting Bugs**: If you find a bug, please create an issue with a detailed description and reproduction steps.
+2.  **Suggesting Enhancements**: Have an idea? Open an issue to discuss it.
+3.  **Pull Requests**: Submit PRs for bug fixes or new features.
+4.  **Documentation**: Improve the documentation to help others.
 
-- Be respectful and inclusive
-- Provide constructive feedback
-- Focus on what is best for the community
-- Show empathy towards other community members
+## Development Setup
 
-## Getting Started
+To get started with development:
 
-### Prerequisites
-- Node.js 18+
-- TypeScript knowledge
-- Basic understanding of V8 Isolates
+1.  **Fork the repository** on GitHub.
+2.  **Clone your fork**:
+    ```bash
+    git clone https://github.com/Arjun-M/Isobox.git
+    cd Isobox
+    ```
+3.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+    *Note: This requires Node.js >= 18.0.0 and a C++ compiler for `isolated-vm`.*
 
-### Setup Development Environment
-```bash
-# Clone repository
-git clone https://github.com/Arjun-M/isobox.git
-cd isobox
+## Code Style
 
-# Install dependencies
-npm install
+We follow strict code style guidelines to ensure consistency:
 
-# Build TypeScript
-npm run build
+-   **TypeScript**: We use strict TypeScript configuration. Ensure no `any` types unless absolutely necessary.
+-   **Linting**: Run `npm run lint` to check for linting errors. We use ESLint.
+-   **Formatting**: Run `npm run format` to format your code using Prettier.
+-   **Comments**: Write clear, "human-style" comments explaining the "why" and "how". Avoid verbose AI-generated comments.
 
-# Run tests
-npm run test
-```
+## PR Process
 
-## Development Workflow
+1.  **Create a Branch**: `git checkout -b feature/my-feature`
+2.  **Commit Changes**: Make focused commits with descriptive messages.
+3.  **Test**: Ensure all tests pass (`npm test`).
+4.  **Push**: `git push origin feature/my-feature`
+5.  **Open PR**: Submit a Pull Request against the `main` branch.
+6.  **Review**: Address any feedback from reviewers.
 
-### 1. Fork and Create Branch
-```bash
-# Fork the repository on GitHub
-git clone https://github.com/Arjun-M/isobox.git
-git checkout -b feature/your-feature-name
-```
+## Testing Requirements
 
-### 2. Make Changes
-- Write code in TypeScript with strict mode
-- Follow existing code style
-- Add JSDoc comments for public APIs
-- Test your changes thoroughly
+We maintain high test coverage and strict testing standards:
 
-### 3. Type Checking
-```bash
-npm run type-check
-```
-
-### 4. Format Code
-```bash
-npm run format
-```
-
-### 5. Lint
-```bash
-npm run lint
-```
-
-### 6. Build
-```bash
-npm run build
-```
-
-### 7. Commit and Push
-```bash
-git add .
-git commit -m "feat: add new feature"
-git push origin feature/your-feature-name
-```
-
-### 8. Create Pull Request
-- Provide clear description of changes
-- Reference related issues
-- Add tests for new functionality
-- Update documentation
-
-## Coding Standards
-
-### TypeScript Strict Mode
-```typescript
-// ✅ DO: Use proper types
-const count: number = 0;
-interface Options {
-  timeout: number;
-  code: string;
-}
-
-// ❌ DON'T: Use implicit any
-const count = 0; // inferred as number - OK
-const value: any = ''; // NO - use proper type
-```
-
-### JSDoc Comments
-```typescript
-/**
- * Execute code in isolated context
- * @param code JavaScript code to execute
- * @param options Execution options
- * @returns Promise of execution result
- * @throws Error if code compilation fails
- * @example
- * const result = await isobox.run('1 + 2');
- */
-async run(code: string, options?: ExecutionOptions): Promise<any>
-```
-
-### Error Handling
-```typescript
-// ✅ DO: Provide meaningful errors
-throw new Error(`Invalid module name: "${name}" is not whitelisted`);
-
-// ❌ DON'T: Generic or unclear errors
-throw new Error('Invalid input');
-```
-
-### Imports
-```typescript
-// ✅ DO: Use .js extension for ESM
-import { MemFS } from '../filesystem/MemFS.js';
-
-// ❌ DON'T: Omit extension or use .ts
-import { MemFS } from '../filesystem/MemFS';
-```
-
-## Testing
-
-### Writing Tests
-```typescript
-// tests/execution.test.ts
-import { IsoBox } from '../src/index.js';
-
-describe('IsoBox Execution', () => {
-  it('should execute simple code', async () => {
-    const isobox = new IsoBox();
-    const result = await isobox.run('1 + 2');
-    expect(result).toBe(3);
-  });
-
-  it('should handle errors', async () => {
-    const isobox = new IsoBox();
-    try {
-      await isobox.run('throw new Error("test")');
-    } catch (error) {
-      expect(error.message).toContain('test');
-    }
-  });
-});
-```
-
-### Run Tests
-```bash
-npm run test
-npm run test -- --coverage
-```
-
-### Test Coverage
-- Aim for >80% coverage
-- Test error cases
-- Test edge cases
-- Test integrations
-
-## Pull Request Process
-
-1. **Update documentation** if needed
-2. **Add tests** for new functionality
-3. **Ensure all checks pass**:
-   - `npm run type-check` ✅
-   - `npm run build` ✅
-   - `npm run test` ✅
-   - `npm run lint` ✅
-
-4. **Provide clear PR description**:
-   - What problem does it solve?
-   - How does it work?
-   - Any breaking changes?
-   - Testing performed
-
-5. **Respond to review feedback** promptly
-
-## Issue Guidelines
-
-### Bug Reports
-Include:
-- Node.js version
-- IsoBox version
-- Minimal reproduction
-- Expected vs actual behavior
-- Error logs/stack traces
-
-### Feature Requests
-Include:
-- Use case/motivation
-- Proposed solution
-- Alternative approaches
-- Any concerns
-
-## Documentation
-
-### README.md Updates
-- Keep installation instructions current
-- Add examples for new features
-- Update API reference
-- Include performance notes
-
-### Code Comments
-- Explain "why" not "what"
-- Document non-obvious logic
-- Add JSDoc for public APIs
-- Update docs/ files for major changes
-
-## Performance Considerations
-
-When submitting code:
-- [ ] Profile performance-critical paths
-- [ ] Avoid unnecessary allocations
-- [ ] Cache expensive computations
-- [ ] Document performance trade-offs
-- [ ] Include benchmarks if applicable
-
-## Security Considerations
-
-All contributions should:
-- [ ] Follow security best practices
-- [ ] Validate all inputs
-- [ ] Avoid unsafe operations (eval, etc.)
-- [ ] Sanitize error messages
-- [ ] Maintain isolation boundaries
-- [ ] Update SECURITY.md if relevant
-
-## File Structure
-
-```
-isobox/
-├── src/
-│   ├── core/          # Core execution engine
-│   ├── execution/     # Execution management
-│   ├── filesystem/    # Virtual filesystem
-│   ├── modules/       # Module system
-│   ├── isolate/       # Isolate pooling
-│   ├── session/       # Session management
-│   ├── context/       # Context building
-│   ├── streaming/     # Streaming support
-│   ├── metrics/       # Metrics collection
-│   ├── security/      # Security utilities
-│   ├── utils/         # Utility functions
-│   └── project/       # Project loading
-├── tests/             # Test files
-├── docs/              # Documentation
-├── dist/              # Compiled output
-└── package.json
-```
-
-## Commit Message Format
-
-Use clear, descriptive commit messages:
-
-```
-feat: add feature X
-fix: resolve issue with Y
-docs: update README
-test: add tests for X
-refactor: improve performance
-chore: update dependencies
-```
+-   **Unit Tests**: Write unit tests for all new functions and classes.
+-   **Coverage**: Aim for >85% code coverage.
+-   **Integration Tests**: Add integration tests for complex interactions.
+-   **Running Tests**:
+    ```bash
+    npm test          # Run all tests
+    npm run test:coverage # Run with coverage report
+    ```
+-   **Snapshot Testing**: If you change output formats, update snapshots.
 
 ## Release Process
 
-Maintainers handle releases following semver:
-- **Major** (X.0.0): Breaking changes
-- **Minor** (x.Y.0): New features
-- **Patch** (x.y.Z): Bug fixes
+(For maintainers)
 
-## Recognized Contributors
-
-Contributors are recognized in:
-- GitHub contributors page
-- Release notes
-- CONTRIBUTORS.md (if applicable)
-
-## Questions?
-
-- **Issues**: Use GitHub Issues for bugs/features
-- **Discussions**: Use GitHub Discussions for questions
-- **Email**: arjun@builderengine.space
-
-## Thank You! 💖
-
-Your contributions make IsoBox better for everyone. Thank you for helping improve this project!
+1.  Update version in `package.json`.
+2.  Update `CHANGELOG.md`.
+3.  Run build and tests.
+4.  Create a release tag.
+5.  Publish to npm.
 
 ---
 
-Happy contributing! 🚀
+By contributing, you agree that your contributions will be licensed under the MIT License.
