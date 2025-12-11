@@ -203,4 +203,10 @@ export class ContextBuilder {
   getEnvHandler(): EnvHandler {
     return this.envHandler;
   }
+
+  dispose(): void {
+    if (this.globalsInjector) {
+      this.globalsInjector.dispose();
+    }
+  }
 }

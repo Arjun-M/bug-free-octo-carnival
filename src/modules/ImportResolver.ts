@@ -67,6 +67,11 @@ export class ImportResolver {
     // Resolve against fromDir
     const resolved = this.joinPaths(fromDir, normalized);
 
+    // Try exact match first
+    if (this.memfs.exists(resolved)) {
+      return resolved;
+    }
+
     // Try with extensions
     for (const ext of this.extensions) {
       const withExt = resolved + ext;
@@ -96,6 +101,11 @@ export class ImportResolver {
    * @returns Resolved path
    */
   private resolveAbsolute(specifier: string): string {
+    // Try exact match first
+    if (this.memfs.exists(specifier)) {
+      return specifier;
+    }
+
     // Try with extensions
     for (const ext of this.extensions) {
       const withExt = specifier + ext;
@@ -127,6 +137,12 @@ export class ImportResolver {
   private resolveNodeModules(specifier: string): string {
     // Try node_modules path (for external packages)
     const nodeModulesPath = `/node_modules/${specifier}`;
+
+    // Try exact match first
+    if (this.memfs.exists(nodeModulesPath)) {
+       const stat = this.memfs.stat(nodeModulesPath);
+       if (!stat.isDirectory) return nodeModulesPath;
+    }
 
     // Try with extensions
     for (const ext of this.extensions) {

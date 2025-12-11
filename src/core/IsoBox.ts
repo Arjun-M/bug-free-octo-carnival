@@ -235,6 +235,8 @@ export class IsoBox {
 
         result = execResult.value;
         isolate.dispose();
+        // Clean up builder (and timers)
+        builder.dispose();
       }
 
       this.recordMetrics(timeout, 0, 0);
@@ -250,7 +252,20 @@ export class IsoBox {
     } catch (error) {
       this.globalMetrics.errorCount++;
 
-      const errorObj = error instanceof Error ? error : new Error(String(error));
+      let errorObj: Error;
+      if (error instanceof Error) {
+        errorObj = error;
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+         // Handle SanitizedError or similar objects
+         const msg = (error as any).message;
+         errorObj = new Error(msg);
+         if ((error as any).stack) errorObj.stack = (error as any).stack;
+         // Copy other properties if needed
+         if ((error as any).code) (errorObj as any).code = (error as any).code;
+      } else {
+        errorObj = new Error(String(error));
+      }
+
       this.emit('execution', {
         type: 'error',
         id: executionId,
