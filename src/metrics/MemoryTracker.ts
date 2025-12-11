@@ -25,7 +25,7 @@ export interface MemoryStats {
 
 export class MemoryTracker {
   private snapshots: MemorySnapshot[] = [];
-  private interval: NodeJS.Timeout | null = null; // Fix: NodeJS.Timer -> NodeJS.Timeout
+  private interval: NodeJS.Timeout | null = null; 
   private intervalMs: number = 100;
   private maxSnapshots: number = 1000;
   private baseMemory: number = 0;
