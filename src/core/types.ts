@@ -132,6 +132,8 @@ export interface IsoBoxOptions {
   usePooling?: boolean;
   /** Pool configuration */
   pool?: PoolOptions;
+  /** Whether to allow timer functions (setTimeout, setInterval, etc.) */
+  allowTimers?: boolean;
   /** Sandbox-specific options */
   sandbox?: Record<string, any>;
   /** Console behavior configuration */
