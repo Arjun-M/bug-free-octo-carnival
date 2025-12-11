@@ -543,22 +543,8 @@ Created by Arjun-M
 Built with:
 - [isolated-vm](https://github.com/laverdet/isolated-vm) - Secure V8 isolate implementation
 - [TypeScript](https://www.typescriptlang.org/) - Type-safe development
-- [Vitest](https://vitest.dev/) - Lightning-fast unit testing
 
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/Arjun-M/Isobox/issues)
 - Discussions: [GitHub Discussions](https://github.com/Arjun-M/Isobox/discussions)
-
-## Changelog
-
-### v1.0.0
-
-- Initial release
-- Secure JavaScript/TypeScript execution
-- Virtual filesystem with quota management
-- Module resolution with whitelist support
-- Session management
-- Connection pooling
-- Comprehensive test suite
-- Full TypeScript support
