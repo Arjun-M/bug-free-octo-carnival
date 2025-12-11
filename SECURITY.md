@@ -8,12 +8,14 @@ IsoBox is a production-grade JavaScript/TypeScript sandbox library that provides
 
 If you discover a security vulnerability, **please do not open a public issue**. Instead:
 
-1. **Email**: security@isobox.dev (create this before production)
+1. **Email**: arjun@builderengine.space (create this before production)
 2. **Include**:
    - Description of vulnerability
    - Steps to reproduce
    - Potential impact
    - Suggested fix (if available)
+  
+You can also open an issue if threat level is low.
 
 ## Security Advisories
 
