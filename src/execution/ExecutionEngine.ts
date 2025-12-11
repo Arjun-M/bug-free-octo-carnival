@@ -1,5 +1,19 @@
 /**
- * Core execution engine.
+ * @fileoverview ExecutionEngine - Core execution orchestrator for sandboxed code.
+ *
+ * Coordinates execution with timeout enforcement, resource monitoring, and error handling.
+ * Manages the complete lifecycle of code execution from start to cleanup.
+ *
+ * @example
+ * ```typescript
+ * const engine = new ExecutionEngine();
+ * const result = await engine.execute(code, isolate, context, {
+ *   timeout: 5000,
+ *   cpuTimeLimit: 10000,
+ *   memoryLimit: 128 * 1024 * 1024,
+ *   strictTimeout: true
+ * });
+ * ```
  */
 
 import { EventEmitter } from 'events';
