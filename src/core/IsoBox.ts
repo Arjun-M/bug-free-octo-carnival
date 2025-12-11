@@ -160,7 +160,8 @@ export class IsoBox {
         const builder = new ContextBuilder({
             ...this.options,
             memfs: this.memfs,
-            moduleSystem: this.moduleSystem
+            moduleSystem: this.moduleSystem,
+            allowTimers: this.options.allowTimers ?? true // Default to true for backward compatibility
         });
 
         // Add session-specific sandbox if provided in run options

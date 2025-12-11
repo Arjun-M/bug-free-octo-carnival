@@ -52,8 +52,8 @@ export class ContextBuilder {
       onOutputAdapter
     );
 
-    // TODO: allowTimers logic needs to be verified in GlobalsInjector
-    this.globalsInjector = new GlobalsInjector(true);
+    // Use the allowTimers option (defaults to true if not specified)
+    this.globalsInjector = new GlobalsInjector(options.allowTimers ?? true);
 
     this.envHandler = new EnvHandler({});
 
