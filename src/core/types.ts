@@ -128,6 +128,10 @@ export interface IsoBoxOptions {
   memoryLimit?: number;
   /** Enforce strict timeout regardless of running operations */
   strictTimeout?: boolean;
+  /** Use isolate pooling */
+  usePooling?: boolean;
+  /** Pool configuration */
+  pool?: PoolOptions;
   /** Sandbox-specific options */
   sandbox?: Record<string, any>;
   /** Console behavior configuration */
@@ -142,6 +146,8 @@ export interface IsoBoxOptions {
   security?: SecurityOptions;
   /** Metrics configuration */
   metrics?: MetricsOptions;
+  /** Interval for cleaning up expired sessions (ms) */
+  sessionCleanupInterval?: number;
 }
 
 /**
@@ -203,11 +209,11 @@ export interface SessionOptions {
  */
 export interface PoolOptions {
   /** Minimum number of pooled isolates */
-  min: number;
+  min?: number;
   /** Maximum number of pooled isolates */
-  max: number;
+  max?: number;
   /** Idle timeout before removing excess isolates (ms) */
-  idleTimeout: number;
+  idleTimeout?: number;
   /** Code to run on isolate creation for warmup */
   warmupCode?: string;
 }

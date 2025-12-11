@@ -1,5 +1,5 @@
 /**
- * @fileoverview Multi-file project loading and execution
+ * Helper to load multiple files into MemFS for a project.
  */
 
 import type { ProjectOptions, ProjectFile } from '../core/types.js';
@@ -7,9 +7,6 @@ import { SandboxError } from '../core/types.js';
 import { MemFS } from '../filesystem/MemFS.js';
 import { logger } from '../utils/Logger.js';
 
-/**
- * Prepared project ready for execution
- */
 export interface PreparedProject {
   entrypoint: string;
   files: ProjectFile[];
@@ -18,9 +15,6 @@ export interface PreparedProject {
   hasTypeScript: boolean;
 }
 
-/**
- * Project statistics
- */
 export interface ProjectStats {
   fileCount: number;
   totalSize: number;
@@ -29,17 +23,8 @@ export interface ProjectStats {
   hasJavaScript: boolean;
 }
 
-/**
- * Loads and validates multi-file projects
- */
 export class ProjectLoader {
-  /**
-   * Load and validate a project
-   * @param project Project options
-   * @returns Prepared project
-   */
   static loadProject(project: ProjectOptions): PreparedProject {
-    // Validate project
     this.validateProject(project);
 
     const hasTypeScript = project.files.some(
@@ -62,58 +47,52 @@ export class ProjectLoader {
     };
   }
 
-  /**
-   * Validate project configuration
-   * @param project Project to validate
-   */
   static validateProject(project: ProjectOptions): void {
     if (!project.files || project.files.length === 0) {
       throw new SandboxError(
-        'Project must have at least one file',
+        'Project empty',
         'EMPTY_PROJECT'
       );
     }
 
     if (!project.entrypoint) {
       throw new SandboxError(
-        'Project must specify entrypoint',
+        'No entrypoint',
         'NO_ENTRYPOINT'
       );
     }
 
-    // Check entrypoint exists
     const entrypointExists = project.files.some(
       (f) => f.path === project.entrypoint
     );
 
     if (!entrypointExists) {
       throw new SandboxError(
-        `Entrypoint file not found: ${project.entrypoint}`,
+        `Entrypoint not found: ${project.entrypoint}`,
         'ENTRYPOINT_NOT_FOUND',
         { entrypoint: project.entrypoint }
       );
     }
 
-    // Validate file paths
     const paths = new Set<string>();
     for (const file of project.files) {
       if (!file.path) {
         throw new SandboxError(
-          'Project file must have a path',
+          'Missing file path',
           'INVALID_FILE_PATH'
         );
       }
 
       if (!file.code) {
         throw new SandboxError(
-          `Project file ${file.path} has no code`,
+          `Empty file code: ${file.path}`,
           'EMPTY_FILE_CODE'
         );
       }
 
       if (paths.has(file.path)) {
         throw new SandboxError(
-          `Duplicate file path: ${file.path}`,
+          `Duplicate path: ${file.path}`,
           'DUPLICATE_FILE'
         );
       }
@@ -122,17 +101,11 @@ export class ProjectLoader {
     }
 
     logger.debug(
-      `Project validated: ${project.files.length} files, entrypoint: ${project.entrypoint}`
+      `Project validated (${project.files.length} files)`
     );
   }
 
-  /**
-   * Write project files to MemFS
-   * @param project Project options
-   * @param memfs Virtual filesystem
-   */
   static writeProjectFiles(project: ProjectOptions, memfs: MemFS): void {
-    // Create directory structure first
     const directories = new Set<string>();
 
     for (const file of project.files) {
@@ -145,16 +118,14 @@ export class ProjectLoader {
       }
     }
 
-    // Create directories
     for (const dir of directories) {
       try {
         memfs.mkdir(dir, true);
       } catch {
-        // Directory may already exist
+        // Ignore exists
       }
     }
 
-    // Write files
     for (const file of project.files) {
       const code = Buffer.isBuffer(file.code)
         ? file.code
@@ -162,10 +133,9 @@ export class ProjectLoader {
 
       try {
         memfs.write(file.path, code);
-        logger.debug(`Wrote project file: ${file.path}`);
       } catch (error) {
         throw new SandboxError(
-          `Failed to write file: ${file.path}`,
+          `Write failed: ${file.path}`,
           'FILE_WRITE_ERROR',
           {
             path: file.path,
@@ -176,15 +146,9 @@ export class ProjectLoader {
     }
   }
 
-  /**
-   * Get project statistics
-   * @param project Project options
-   * @param memfs Virtual filesystem
-   * @returns Project statistics
-   */
   static getProjectStats(
     project: ProjectOptions,
-    memfs: MemFS
+    _memfs?: MemFS // Unused param, marked with underscore or remove. Keeping underscore for signature compat if needed.
   ): ProjectStats {
     let largestFile = { name: '', size: 0 };
     let totalSize = 0;
@@ -219,11 +183,6 @@ export class ProjectLoader {
     };
   }
 
-  /**
-   * Build file tree for project
-   * @param files Project files
-   * @returns Map of path to code
-   */
   static buildFileTree(files: ProjectFile[]): Map<string, string> {
     const tree = new Map<string, string>();
 

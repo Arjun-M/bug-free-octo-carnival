@@ -197,6 +197,7 @@ export class SecurityLogger {
    * @param event Event name
    * @param handler Handler function
    */
+  // eslint-disable-next-line @typescript-eslint/ban-types
   on(event: string, handler: Function): void {
     this.eventEmitter.on(event, handler as any);
   }
@@ -206,6 +207,7 @@ export class SecurityLogger {
    * @param event Event name
    * @param handler Handler function
    */
+  // eslint-disable-next-line @typescript-eslint/ban-types
   off(event: string, handler: Function): void {
     this.eventEmitter.off(event, handler as any);
   }

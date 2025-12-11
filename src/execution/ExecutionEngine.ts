@@ -1,21 +1,18 @@
 /**
- * @fileoverview Main execution engine orchestrating code execution
+ * Core execution engine.
  */
 
 import { EventEmitter } from 'events';
 import type { Context, Isolate } from 'isolated-vm';
 import { CompiledScript } from '../core/CompiledScript.js';
 import { TimeoutError } from '../core/types.js';
-import { TimeoutManager, type TimeoutHandle } from './TimeoutManager.js';
+import { TimeoutManager } from './TimeoutManager.js';
 import { ResourceMonitor, type ResourceStats } from './ResourceMonitor.js';
 import { ExecutionContext } from './ExecutionContext.js';
 import { ErrorSanitizer, type SanitizedError } from '../security/ErrorSanitizer.js';
 import { Timer } from '../utils/Timer.js';
 import { logger } from '../utils/Logger.js';
 
-/**
- * Options for execution
- */
 export interface ExecuteOptions {
   timeout: number;
   cpuTimeLimit: number;
@@ -25,9 +22,6 @@ export interface ExecuteOptions {
   code?: string;
 }
 
-/**
- * Execution result with metrics
- */
 export interface ExecutionResult<T = any> {
   value: T;
   duration: number;
@@ -37,14 +31,12 @@ export interface ExecutionResult<T = any> {
 }
 
 /**
- * Main execution engine coordinating timeouts, resources, and error handling
+ * Orchestrates code execution.
  *
- * Key features:
- * - Strict timeout enforcement kills isolates on timeout
- * - Infinite loop detection using CPU time monitoring
- * - Resource tracking (CPU, memory)
- * - Error sanitization to prevent info leakage
- * - Promise.race for timeout enforcement
+ * Handles:
+ * - Timeouts (strict & graceful)
+ * - Resource monitoring (CPU/RAM)
+ * - Error sanitization
  */
 export class ExecutionEngine {
   private timeoutManager: TimeoutManager;
@@ -58,7 +50,6 @@ export class ExecutionEngine {
     this.errorSanitizer = new ErrorSanitizer();
     this.eventEmitter = new EventEmitter();
 
-    // Wire up timeout manager events
     this.timeoutManager.on('timeout', (event) => {
       this.eventEmitter.emit('timeout', event);
     });
@@ -67,19 +58,13 @@ export class ExecutionEngine {
       this.eventEmitter.emit('resource-warning', event);
     });
 
-    // Wire up resource monitor events
     this.resourceMonitor.on('warning', (event) => {
       this.eventEmitter.emit('resource-warning', event);
     });
   }
 
   /**
-   * Execute code string in an isolate
-   * @param code Source code to execute
-   * @param isolate The isolate to execute in
-   * @param context The execution context
-   * @param options Execution options
-   * @returns Execution result with value and metrics
+   * Run code in the given isolate.
    */
   async execute<T = any>(
     code: string,
@@ -90,18 +75,9 @@ export class ExecutionEngine {
     const executionId = ExecutionContext.generateId();
     const timer = new Timer().start();
 
-    const executionContext = new ExecutionContext(
-      executionId,
-      code,
-      options.timeout,
-      options.cpuTimeLimit,
-      options.memoryLimit,
-      undefined,
-      { filename: options.filename }
-    );
-
+    // Log start
     logger.debug(
-      `[${executionId}] Starting execution (timeout=${options.timeout}ms, cpuLimit=${options.cpuTimeLimit}ms)`
+      `[${executionId}] Running code (timeout=${options.timeout}ms)`
     );
 
     this.eventEmitter.emit('execution:start', {
@@ -111,13 +87,14 @@ export class ExecutionEngine {
       timestamp: Date.now(),
     });
 
-    const timeoutHandle = this.timeoutManager.startTimeout(
+    // Start strict timeout
+    this.timeoutManager.startTimeout(
       isolate,
       options.timeout,
-      options.strictTimeout,
       executionId
     );
 
+    // Start resource monitoring
     const resourceId = this.resourceMonitor.startMonitoring(
       isolate,
       executionId,
@@ -126,15 +103,15 @@ export class ExecutionEngine {
     );
 
     try {
-      // Compile the code
+      // Compile
       const script = await this.createTimeoutPromise(
         isolate.compileScript(code, {
           filename: options.filename || 'script',
         }),
-        options.timeout * 0.5 // Give compilation 50% of timeout budget
+        options.timeout * 0.5 // Compile shouldn't take > 50% of time
       );
 
-      // Execute with timeout race
+      // Run
       const result = await this.createTimeoutPromise(
         script.run(context, {
           timeout: options.timeout,
@@ -145,15 +122,11 @@ export class ExecutionEngine {
 
       const duration = timer.stop();
 
-      // Stop monitoring and get stats
+      // Cleanup monitoring
       this.timeoutManager.clearTimeout(executionId);
       const resourceStats = this.resourceMonitor.stopMonitoring(resourceId);
 
       const finalResult = this.transferResult<T>(result);
-
-      logger.debug(
-        `[${executionId}] Execution completed in ${duration.toFixed(2)}ms (cpu: ${resourceStats.finalCpuTime.toFixed(2)}ms)`
-      );
 
       this.eventEmitter.emit('execution:complete', {
         id: executionId,
@@ -169,22 +142,18 @@ export class ExecutionEngine {
         resourceStats,
       };
     } catch (error) {
-      // Stop timeout and monitoring
+      // Cleanup on error
       this.timeoutManager.clearTimeout(executionId);
 
       let resourceStats: ResourceStats | undefined;
       try {
         resourceStats = this.resourceMonitor.stopMonitoring(resourceId);
       } catch {
-        // Resource monitoring may have already been cleaned up
+        // Ignore if already stopped
       }
 
       const duration = timer.stop();
       const sanitizedError = this.errorSanitizer.sanitize(error, code);
-
-      logger.debug(
-        `[${executionId}] Execution failed: ${sanitizedError.message} (${duration.toFixed(2)}ms)`
-      );
 
       this.eventEmitter.emit('execution:error', {
         id: executionId,
@@ -205,11 +174,7 @@ export class ExecutionEngine {
   }
 
   /**
-   * Execute a compiled script
-   * @param compiled Compiled script to execute
-   * @param context Execution context
-   * @param options Execution options
-   * @returns Execution result
+   * Run a pre-compiled script.
    */
   async executeScript<T = any>(
     compiled: CompiledScript,
@@ -217,14 +182,13 @@ export class ExecutionEngine {
     options: ExecuteOptions
   ): Promise<ExecutionResult<T>> {
     const code = compiled.getSource();
+    // Assuming context has isolate reference or we need to change signature
+    // For now using cast as per existing pattern
     return this.execute(code, (context as any).isolate, context, options);
   }
 
   /**
-   * Wrap a promise with timeout enforcement
-   * @param promise Promise to wrap
-   * @param timeoutMs Timeout in milliseconds
-   * @returns Promise that rejects with TimeoutError if timeout exceeded
+   * Promise with a timeout.
    */
   private createTimeoutPromise<T>(
     promise: Promise<T>,
@@ -241,21 +205,18 @@ export class ExecutionEngine {
   }
 
   /**
-   * Transfer a result from isolated-vm context to host
-   * @param result Result from isolated-vm
-   * @returns Transferred result
+   * Move result from VM to Host.
    */
   private transferResult<T>(result: any): T {
     if (result === null || result === undefined) {
       return result;
     }
 
-    // If it has a copy method (isolated-vm Reference), call it
+    // Handle isolated-vm references
     if (typeof result.copy === 'function') {
       try {
         return result.copy() as T;
       } catch (err) {
-        logger.debug(`Error copying result: ${err instanceof Error ? err.message : String(err)}`);
         return result;
       }
     }
@@ -264,68 +225,38 @@ export class ExecutionEngine {
   }
 
   /**
-   * Setup execution context with isolated-vm
-   * @param isolate Isolate to setup context in
-   * @param options Execution options
-   * @returns Created context
+   * Create a fresh context.
    */
-  setupExecutionContext(isolate: Isolate, options: ExecuteOptions): Context {
+  setupExecutionContext(isolate: Isolate, _options: ExecuteOptions): Context {
     try {
-      const context = isolate.createContextSync();
-
-      // Optionally set sandbox globals
-      // This will be expanded in future sessions
-
-      return context;
+      return isolate.createContextSync();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Failed to setup execution context: ${err.message}`);
+      logger.error(`Context setup failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Register event listener
-   * @param event Event name
-   * @param handler Event handler
-   */
   on(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.on(event, handler);
   }
 
-  /**
-   * Remove event listener
-   * @param event Event name
-   * @param handler Event handler
-   */
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
   }
 
-  /**
-   * Get timeout manager
-   */
   getTimeoutManager(): TimeoutManager {
     return this.timeoutManager;
   }
 
-  /**
-   * Get resource monitor
-   */
   getResourceMonitor(): ResourceMonitor {
     return this.resourceMonitor;
   }
 
-  /**
-   * Get error sanitizer
-   */
   getErrorSanitizer(): ErrorSanitizer {
     return this.errorSanitizer;
   }
 
-  /**
-   * Cleanup and dispose resources
-   */
   dispose(): void {
     this.timeoutManager.clearAll();
     this.resourceMonitor.stopAll();
