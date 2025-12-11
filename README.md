@@ -1,38 +1,28 @@
-![IsoBox](https://img.shields.io/badge/IsoBox-v1.0.0-blue)
+# IsoBox
 
-# IsoBox: Production-Grade JavaScript/TypeScript Sandbox
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
+[![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen)](#testing)
 
-A complete, production-ready sandbox library for safely executing untrusted JavaScript and TypeScript code with comprehensive resource controls, security, and monitoring.
+> Production-grade JavaScript/TypeScript sandbox with strict timeouts, memory filesystem, and multi-file support
+
+IsoBox is a secure, high-performance sandbox for executing untrusted JavaScript and TypeScript code with comprehensive resource controls, virtual filesystem access, and module resolution.
 
 ## Features
 
-### Core Execution
-- ✅ **Isolated Execution** - Run code in isolated V8 contexts (using isolated-vm)
-- ✅ **Timeout Enforcement** - Strict timeout with infinite loop detection
-- ✅ **Resource Monitoring** - CPU, memory, and execution time tracking
-- ✅ **Streaming Support** - Generator/async generator support with yield
-- ✅ **Multi-Language** - JavaScript and TypeScript support
-
-### Security
-- ✅ **Safe Globals** - Only whitelisted built-ins (no process, Buffer, require)
-- ✅ **Module Whitelist** - Control which npm packages can be required
-- ✅ **Filesystem Isolation** - In-memory filesystem (MemFS) with permissions
-- ✅ **Security Logging** - Comprehensive security event tracking
-- ✅ **Input Validation** - Code and input sanitization
-
-### Management
-- ✅ **Connection Pooling** - Reuse isolates for 10-100x performance
-- ✅ **Session Management** - Persistent execution contexts with TTL
-- ✅ **State Persistence** - Share state between executions
-- ✅ **Metrics Collection** - Detailed execution metrics and statistics
-- ✅ **Event System** - Emit and listen to execution/security events
-
-### Developer Experience
-- ✅ **TypeScript** - Strict TypeScript with full type safety
-- ✅ **Comprehensive Logging** - Debug and monitor execution
-- ✅ **Error Handling** - Detailed error reporting with sanitization
-- ✅ **Documentation** - Complete API docs and examples
-- ✅ **Zero Dependencies** - Only isolated-vm required
+- **Secure Isolation**: Execute untrusted code in isolated V8 contexts
+- **Resource Limits**: Enforce strict timeout, memory, and CPU limits
+- **Virtual Filesystem**: In-memory filesystem with quota enforcement and permissions
+- **Module Support**: Whitelist-based module resolution with mocking capabilities
+- **TypeScript Support**: Built-in TypeScript transpilation
+- **Session Management**: Persistent execution contexts with state management
+- **Streaming Execution**: Support for async generators and streaming results
+- **Connection Pooling**: Reusable isolate pools for high-throughput scenarios
+- **Multi-file Projects**: Execute complex projects with multiple files
+- **Security Logging**: Track and audit security violations
+- **Error Sanitization**: Prevent information leakage through error messages
+- **Performance Metrics**: Detailed execution metrics and profiling
 
 ## Installation
 
@@ -40,449 +30,534 @@ A complete, production-ready sandbox library for safely executing untrusted Java
 npm install isobox
 ```
 
+### Prerequisites
+
+- Node.js >= 18.0.0
+- `isolated-vm` package (automatically installed as a dependency)
+
 ## Quick Start
 
-### Simple Execution
+### Basic Usage
 
 ```typescript
 import { IsoBox } from 'isobox';
 
-const isobox = new IsoBox();
-
-const result = await isobox.run('1 + 2');
-console.log(result); // 3
-```
-
-### With Timeout and Sandbox Variables
-
-```typescript
-const isobox = new IsoBox();
-
-const result = await isobox.run(
-  'data.map(x => x * 2)',
-  {
-    timeout: 5000,
-    sandbox: { data: [1, 2, 3] }
-  }
-);
-console.log(result); // [2, 4, 6]
-```
-
-### Streaming Execution
-
-```typescript
-const isobox = new IsoBox();
-
-for await (const value of isobox.runStream(`
-  for (let i = 0; i < 5; i++) {
-    yield i * 2;
-  }
-`)) {
-  console.log(value); // 0, 2, 4, 6, 8
-}
-```
-
-### Persistent Sessions
-
-```typescript
-const isobox = new IsoBox();
-
-const session = isobox.createSession('user-123');
-
-// First execution
-await session.run('counter = 0');
-
-// Second execution - state preserved
-const result = await session.run('counter++; counter');
-console.log(result); // 1
-
-// Third execution
-const result2 = await session.run('counter++; counter');
-console.log(result2); // 2
-```
-
-### With Pool and Metrics
-
-```typescript
-const isobox = new IsoBox({
-  pool: {
-    min: 5,
-    max: 20,
-    idleTimeout: 30000
-  }
+// Create a sandbox instance
+const sandbox = new IsoBox({
+  timeout: 5000,          // 5 second timeout
+  memoryLimit: 128 * 1024 * 1024,  // 128MB memory limit
+  cpuTimeLimit: 10000,    // 10 second CPU time limit
 });
 
-// Warm up pool
-await isobox.warmupPool();
+// Execute untrusted code
+const result = await sandbox.run('return 1 + 1;');
+console.log(result); // 2
 
-// Execute many times (reuses isolates)
-for (let i = 0; i < 100; i++) {
-  await isobox.run(`Math.random() * ${i}`);
-}
-
-// Get metrics
-const metrics = isobox.getMetrics();
-console.log(`Total executions: ${metrics.totalExecutions}`);
-console.log(`Average time: ${metrics.avgExecutionTime}ms`);
+// Clean up
+await sandbox.dispose();
 ```
 
-### Security & Logging
+### With Filesystem Access
 
 ```typescript
-const outputs: any[] = [];
-
-const isobox = new IsoBox({
-  console: {
-    mode: 'redirect',
-    onOutput: (type, message) => outputs.push({ type, message })
-  },
+const sandbox = new IsoBox({
   filesystem: {
     enabled: true,
-    quota: 10_000_000  // 10MB
+    maxSize: 64 * 1024 * 1024, // 64MB
+    root: '/',
   },
+});
+
+// Write files
+sandbox.fs.write('/config.json', JSON.stringify({ key: 'value' }));
+
+// Execute code that reads files
+const code = `
+  const fs = globalThis.__memfs;
+  const config = JSON.parse(fs.read('/config.json').toString());
+  return config.key;
+`;
+
+const result = await sandbox.run(code);
+console.log(result); // 'value'
+```
+
+### With Module Support
+
+```typescript
+const sandbox = new IsoBox({
   require: {
-    whitelist: ['lodash', '@scope/*']
-  }
+    mode: 'whitelist',
+    whitelist: ['lodash', 'moment'],
+    mocks: {
+      'custom-module': {
+        hello: () => 'Hello from mock!',
+      },
+    },
+  },
 });
 
-// Listen to security events
-isobox.on('security:violation', (event) => {
-  console.log(`Security event: ${event.type}`, event.severity);
+const code = `
+  const _ = require('lodash');
+  const custom = require('custom-module');
+  return custom.hello() + ' ' + _.capitalize('world');
+`;
+
+const result = await sandbox.run(code);
+```
+
+### Session Management
+
+```typescript
+const sandbox = new IsoBox();
+
+// Create a persistent session
+const session = await sandbox.createSession('user-123', {
+  ttl: 3600000,  // 1 hour
+  persistent: true,
 });
 
-// Execute
-await isobox.run(`
-  console.log('Hello');
-  $fs.write('/data.json', JSON.stringify({test: true}));
-`);
+// Execute code in session context
+await session.run('let counter = 0;');
+await session.run('counter++;');
+const result = await session.run('return counter;');
+console.log(result); // 1
 
-console.log(outputs); // [{ type: 'log', message: 'Hello' }]
+// List all sessions
+const sessions = sandbox.listSessions();
+```
+
+### Multi-file Projects
+
+```typescript
+const sandbox = new IsoBox();
+
+const result = await sandbox.runProject({
+  files: [
+    {
+      path: 'src/utils.ts',
+      code: 'export function add(a: number, b: number) { return a + b; }',
+      language: 'typescript',
+    },
+    {
+      path: 'src/index.ts',
+      code: `
+        import { add } from './utils';
+        export default add(10, 20);
+      `,
+      language: 'typescript',
+    },
+  ],
+  entrypoint: 'src/index.ts',
+  timeout: 10000,
+});
+
+console.log(result); // 30
 ```
 
 ## API Documentation
 
-### IsoBox
-
-Main class for sandbox operations.
-
-#### Constructor
+### IsoBox Constructor
 
 ```typescript
-const isobox = new IsoBox(options?: IsoBoxOptions);
+new IsoBox(options?: IsoBoxOptions)
 ```
 
-**Options:**
+#### IsoBoxOptions
 
-- `timeout`: Default timeout in ms (default: 30000)
-- `memoryLimit`: Memory limit in bytes (default: 128MB)
-- `console`: Console configuration (inherit/redirect/off)
-- `filesystem`: Filesystem options (enabled, quota)
-- `require`: Module whitelist configuration
-- `sandbox`: Default sandbox variables
-- `env`: Environment variables
-- `pool`: Isolate pool configuration
-- `security`: Security event logging
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `timeout` | `number` | `5000` | Execution timeout in milliseconds |
+| `cpuTimeLimit` | `number` | `10000` | CPU time limit in milliseconds |
+| `memoryLimit` | `number` | `128MB` | Memory limit in bytes |
+| `strictTimeout` | `boolean` | `true` | Enforce strict timeout regardless of operations |
+| `usePooling` | `boolean` | `false` | Enable isolate connection pooling |
+| `pool` | `PoolOptions` | - | Pool configuration |
+| `filesystem` | `FilesystemOptions` | - | Virtual filesystem configuration |
+| `require` | `RequireOptions` | - | Module resolution configuration |
+| `security` | `SecurityOptions` | - | Security settings |
+| `metrics` | `MetricsOptions` | - | Metrics collection settings |
 
-#### Methods
+### Core Methods
 
-**`async run<T>(code: string, options?: RunOptions): Promise<T>`**
+#### `run<T>(code: string, options?: RunOptions): Promise<T>`
 
-Execute code synchronously.
+Execute code in the sandbox.
 
 ```typescript
-const result = await isobox.run<number>('2 + 2');
-// result === 4
+const result = await sandbox.run<number>('return 42;');
 ```
 
-**`async *runStream(code: string, options?: RunOptions): AsyncIterable<any>`**
+#### `compile(code: string): CompiledScript`
+
+Pre-compile code for faster repeated execution.
+
+```typescript
+const script = sandbox.compile('return 1 + 1;');
+// Execute later with better performance
+```
+
+#### `runProject<T>(project: ProjectOptions): Promise<T>`
+
+Execute a multi-file project.
+
+#### `runStream(code: string): AsyncIterable<any>`
 
 Execute code with streaming results.
 
 ```typescript
-for await (const value of isobox.runStream('yield 1; yield 2')) {
-  console.log(value); // 1, 2
+for await (const chunk of sandbox.runStream(generatorCode)) {
+  console.log(chunk);
 }
 ```
 
-**`createSession(id: string, options?: SessionOptions): Session`**
+#### `createSession(id: string, options?: SessionOptions): Promise<Session>`
 
-Create persistent session.
+Create a persistent execution session.
+
+#### `dispose(): Promise<void>`
+
+Clean up all resources. Always call this when done.
+
+### Filesystem API
+
+Access via `sandbox.fs`:
+
+- `write(path: string, content: string | Buffer): void`
+- `read(path: string): Buffer`
+- `readdir(path: string): string[]`
+- `mkdir(path: string, recursive?: boolean): void`
+- `delete(path: string, recursive?: boolean): void`
+- `exists(path: string): boolean`
+- `stat(path: string): FileStats`
+- `clear(): void`
+- `getQuotaUsage(): QuotaUsage`
+
+### Event System
 
 ```typescript
-const session = isobox.createSession('user-1');
-await session.run('state = {}');
-```
+sandbox.on('execution', (event) => {
+  console.log(`Execution ${event.type}: ${event.id}`);
+});
 
-**`getMetrics(): GlobalMetrics`**
+sandbox.on('timeout', (event) => {
+  console.error('Execution timed out:', event);
+});
 
-Get execution metrics.
-
-```typescript
-const metrics = isobox.getMetrics();
-console.log(metrics.totalExecutions);
-console.log(metrics.errorRate);
-```
-
-**`on(event: string, handler: Function): void`**
-
-Listen to events.
-
-```typescript
-isobox.on('metrics:recorded', (metrics) => {
-  console.log(`Execution took ${metrics.duration}ms`);
+sandbox.on('resource-warning', (event) => {
+  console.warn('Resource warning:', event);
 });
 ```
 
-### Session
+## Configuration
 
-Persistent execution context with state.
+### Security Options
 
 ```typescript
-const session = isobox.createSession('user-123');
-
-// Run code (state preserved)
-await session.run('x = 10');
-await session.run('x += 5');
-const result = await session.run('x'); // 15
-
-// Get session info
-const info = session.getInfo();
-console.log(info.executionCount);
-
-// Clean up
-session.dispose();
+const sandbox = new IsoBox({
+  security: {
+    logViolations: true,
+    sanitizeErrors: true,
+    onSecurityEvent: (event) => {
+      console.log('Security event:', event);
+    },
+  },
+});
 ```
 
-### IsolatePool
+### Connection Pooling
 
-Connection pool for performance.
+For high-throughput scenarios:
 
 ```typescript
-const pool = new IsolatePool({
-  min: 5,
-  max: 50,
-  idleTimeout: 30000
+const sandbox = new IsoBox({
+  usePooling: true,
+  pool: {
+    min: 2,
+    max: 10,
+    idleTimeout: 60000,
+    warmupCode: 'const _ = require("lodash");', // Pre-load modules
+  },
 });
 
-await pool.warmup();
-const result = await pool.execute('1 + 1');
-const stats = pool.getStats();
-
-await pool.dispose();
+// Warm up the pool
+await sandbox.warmupPool();
 ```
 
-## Security Model
+### TypeScript Support
 
-### What IsoBox Protects Against
+```typescript
+const sandbox = new IsoBox({
+  typescript: {
+    enabled: true,
+    typeCheck: false, // Set to true for type checking
+    strict: true,
+    target: 'ES2022',
+  },
+});
 
-✅ **Infinite Loops** - Strict timeout enforcement
-✅ **Resource Exhaustion** - Memory and CPU limits
-✅ **Access to Node APIs** - No process, Buffer, fs, etc.
-✅ **Code Injection** - Input validation and sanitization
-✅ **Module Access** - Whitelist-based require control
-✅ **Filesystem Access** - Isolated in-memory filesystem
-✅ **Prototype Pollution** - Constructor access blocked
+await sandbox.run('const x: number = 42; return x;', {
+  language: 'typescript',
+});
+```
 
-### What IsoBox Does NOT Protect Against
+## Testing
 
-❌ **Side-Channel Attacks** - Timing analysis possible
-❌ **TOCTOU Vulnerabilities** - Time-of-check vs time-of-use
-❌ **Spectre/Meltdown** - CPU-level vulnerabilities
+IsoBox comes with comprehensive unit tests covering critical components.
+
+```bash
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Test Coverage
+
+Current test coverage for core modules:
+
+- **Filesystem**: 86.3% (MemFS, FileNode, Permissions)
+- **Security**: 98.14% (ErrorSanitizer)
+- **Core Types**: 100% (Error classes, type definitions)
+- **Utilities**: 97.34% (AsyncQueue)
+- **Overall**: 235 tests passing
+
+## Development
+
+### Project Structure
+
+```
+src/
+├── core/              # Core sandbox implementation
+│   ├── IsoBox.ts     # Main sandbox class
+│   ├── types.ts      # Type definitions
+│   └── CompiledScript.ts
+├── execution/        # Code execution engine
+│   ├── ExecutionEngine.ts
+│   ├── TimeoutManager.ts
+│   └── ResourceMonitor.ts
+├── filesystem/       # Virtual filesystem
+│   ├── MemFS.ts      # In-memory filesystem
+│   ├── FileNode.ts
+│   └── Permissions.ts
+├── isolate/          # V8 isolate management
+│   ├── IsolatePool.ts
+│   └── IsolateManager.ts
+├── modules/          # Module resolution
+│   ├── ModuleSystem.ts
+│   └── ImportResolver.ts
+├── security/         # Security features
+│   ├── ErrorSanitizer.ts
+│   └── SecurityLogger.ts
+├── session/          # Session management
+│   └── SessionManager.ts
+└── utils/            # Utility functions
+    ├── AsyncQueue.ts
+    └── Logger.ts
+```
+
+### Build
+
+```bash
+# Build for production
+npm run build
+
+# Build and watch for changes
+npm run dev
+
+# Type check
+npm run type-check
+
+# Lint
+npm run lint
+
+# Format code
+npm run format
+```
+
+### Testing Conventions
+
+When writing tests:
+
+1. Use descriptive test names: `it('should return user when valid ID provided')`
+2. Test happy paths, edge cases, and error conditions
+3. Mock external dependencies appropriately
+4. Keep tests isolated and independent
+5. Aim for >80% code coverage
+
+Example test structure:
+
+```typescript
+describe('Component', () => {
+  describe('method', () => {
+    it('should handle normal case', () => {
+      // Arrange
+      const input = 'test';
+
+      // Act
+      const result = component.method(input);
+
+      // Assert
+      expect(result).toBe('expected');
+    });
+
+    it('should handle edge case', () => {
+      // Test edge case
+    });
+
+    it('should throw error for invalid input', () => {
+      expect(() => component.method(null)).toThrow();
+    });
+  });
+});
+```
+
+## Security Considerations
+
+### Sandbox Escape Prevention
+
+IsoBox uses `isolated-vm` to provide true V8 isolate-level separation:
+
+- No access to Node.js APIs by default
+- No access to `require()`, `process`, `Buffer`, etc.
+- Module access strictly controlled via whitelist
+- Error messages sanitized to prevent information leakage
+
+### Resource Limits
+
+Always set appropriate limits:
+
+```typescript
+const sandbox = new IsoBox({
+  timeout: 5000,        // Prevent infinite loops
+  memoryLimit: 128 * 1024 * 1024,  // Prevent memory exhaustion
+  cpuTimeLimit: 10000,  // Prevent CPU hogging
+  filesystem: {
+    maxSize: 64 * 1024 * 1024,  // Prevent disk exhaustion
+  },
+});
+```
 
 ### Best Practices
 
-1. **Always set timeout** - Prevent hanging
-2. **Use whitelist for requires** - Only allow needed modules
-3. **Monitor metrics** - Track execution patterns
-4. **Log security events** - Review access attempts
-5. **Validate input** - Sanitize all user input
-6. **Use sessions for state** - Don't pass sensitive data via sandbox
+1. **Always call `dispose()`** when done with a sandbox
+2. **Set strict timeouts** for untrusted code
+3. **Use whitelist mode** for module resolution
+4. **Enable error sanitization** to prevent information leakage
+5. **Monitor security events** via event listeners
+6. **Validate input** before passing to sandbox
+7. **Use connection pooling** for high-throughput scenarios
+8. **Set appropriate memory limits** based on expected workload
 
-## Examples
+## Performance Tips
 
-### Executing TypeScript
+### Use Compiled Scripts
+
+For repeated execution of the same code:
 
 ```typescript
-import { transpileModule } from 'typescript';
+const script = sandbox.compile(code);
+// Execute multiple times with better performance
+await script.run(context, isolate);
+```
 
-const code = `
-  const add = (a: number, b: number): number => a + b;
-  add(5, 10)
-`;
+### Enable Connection Pooling
 
-const { outputText } = transpileModule(code, {
-  compilerOptions: { module: 'es2015' }
+For high-throughput scenarios:
+
+```typescript
+const sandbox = new IsoBox({
+  usePooling: true,
+  pool: { min: 5, max: 20 },
 });
-
-const result = await isobox.run(outputText);
-console.log(result); // 15
 ```
 
-### Processing Data
+### Optimize Module Loading
+
+Pre-load frequently used modules in warmup:
 
 ```typescript
-const data = [
-  { name: 'Alice', score: 85 },
-  { name: 'Bob', score: 92 },
-  { name: 'Charlie', score: 78 }
-];
-
-const result = await isobox.run<any[]>(
-  `data.filter(x => x.score > 80).sort((a, b) => b.score - a.score)`,
-  { sandbox: { data } }
-);
-
-console.log(result);
-// [{ name: 'Bob', score: 92 }, { name: 'Alice', score: 85 }]
+await sandbox.warmupPool('const _ = require("lodash");');
 ```
-
-### Template Rendering
-
-```typescript
-const template = `
-  const html = \`<div>
-    <h1>\${title}</h1>
-    <p>\${content}</p>
-  </div>\`;
-  html
-`;
-
-const result = await isobox.run<string>(template, {
-  sandbox: {
-    title: 'Hello',
-    content: 'World'
-  }
-});
-
-console.log(result);
-```
-
-### Computing Results
-
-```typescript
-const computeFibonacci = `
-  function fib(n) {
-    if (n <= 1) return n;
-    return fib(n - 1) + fib(n - 2);
-  }
-  fib(30)
-`;
-
-const result = await isobox.run<number>(computeFibonacci, {
-  timeout: 10000
-});
-
-console.log(result); // 832040
-```
-
-## Performance
-
-### Benchmarks
-
-**Pool Reuse:**
-- Without pool: ~50ms per execution
-- With pool: ~5ms per execution
-- **10x improvement**
-
-**Memory Overhead:**
-- Per isolate: ~40MB
-- Per context: ~10KB
-- Pool min=5: ~200MB base
-
-**Metrics Tracking:**
-- Overhead: <0.5% per execution
-- History kept: Last 100 executions
-- Export: JSON/human-readable
-
-## Comparison
-
-### vs vm2
-
-| Feature | IsoBox | vm2 |
-|---------|--------|-----|
-| Maintenance | ✅ Active | ❌ Unmaintained |
-| Performance | ✅ 100ms+ | ⚠️ 50-200ms |
-| Security | ✅ Strong | ⚠️ Medium |
-| Types | ✅ TypeScript | ❌ No types |
-| Streaming | ✅ Yes | ❌ No |
-| Pooling | ✅ Yes | ❌ No |
-| Sessions | ✅ Yes | ❌ No |
-| Metrics | ✅ Yes | ❌ No |
-
-### vs isolated-vm
-
-IsoBox is built **on top of** isolated-vm and adds:
-
-- Session management
-- Connection pooling
-- Metrics collection
-- Security logging
-- Filesystem isolation (MemFS)
-- Module system integration
-- Streaming support
-- High-level API
 
 ## Troubleshooting
 
-### Code Times Out
+### Common Issues
 
-```typescript
-// Increase timeout
-const result = await isobox.run(code, { timeout: 60000 });
+#### Timeout Errors
 
-// Or check for infinite loops
-isobox.on('timeout', (event) => {
-  console.log('Execution timed out:', event.code);
-});
-```
+If you're experiencing timeout errors:
 
-### Out of Memory
+1. Increase timeout: `timeout: 10000`
+2. Use `strictTimeout: false` for non-critical scenarios
+3. Check for infinite loops in user code
 
-```typescript
-// Check metrics
-const metrics = isobox.getMetrics();
-console.log(metrics.peakMemory);
+#### Memory Limit Errors
 
-// Reduce pool size or limit code size
-const isobox = new IsoBox({
-  pool: { max: 10 },
-  memoryLimit: 64 * 1024 * 1024  // 64MB
-});
-```
+If hitting memory limits:
 
-### Module Not Found
+1. Increase `memoryLimit`
+2. Check for memory leaks in user code
+3. Reduce filesystem quota if not needed
 
-```typescript
-// Whitelist the module
-const isobox = new IsoBox({
-  require: {
-    whitelist: ['lodash', '@scope/*']
-  }
-});
+#### Module Not Found
 
-// Or check security logs
-isobox.on('security:warning', (event) => {
-  if (event.type === 'unauthorized_require') {
-    console.log('Module not whitelisted:', event.details.module);
-  }
-});
-```
+If modules aren't resolving:
+
+1. Ensure module is in `whitelist`
+2. Check module name spelling
+3. Verify `require.mode` is set correctly
 
 ## Contributing
 
-Contributions welcome! Please see CONTRIBUTING.md.
+Contributions are welcome! Please follow these guidelines:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Write tests for new functionality
+4. Ensure all tests pass: `npm test`
+5. Follow the existing code style
+6. Submit a pull request
+
+### Code Review Process
+
+- All PRs require passing tests
+- Maintain or improve code coverage
+- Follow TypeScript best practices
+- Document new features and APIs
+- Add examples for new functionality
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) file for details
+
+## Credits
+
+Created by Arjun-M
+
+Built with:
+- [isolated-vm](https://github.com/laverdet/isolated-vm) - Secure V8 isolate implementation
+- [TypeScript](https://www.typescriptlang.org/) - Type-safe development
+- [Vitest](https://vitest.dev/) - Lightning-fast unit testing
 
 ## Support
 
-- 📖 [Full Documentation](./docs/API.md)
-- 🔒 [Security Guide](./docs/SECURITY.md)
-- 💬 [GitHub Discussions](https://github.com/your-repo/discussions)
-- 🐛 [Issue Tracker](https://github.com/your-repo/issues)
+- Issues: [GitHub Issues](https://github.com/Arjun-M/Isobox/issues)
+- Discussions: [GitHub Discussions](https://github.com/Arjun-M/Isobox/discussions)
 
----
+## Changelog
 
-**IsoBox** - Sandbox JavaScript safely. 🎁
+### v1.0.0
+
+- Initial release
+- Secure JavaScript/TypeScript execution
+- Virtual filesystem with quota management
+- Module resolution with whitelist support
+- Session management
+- Connection pooling
+- Comprehensive test suite
+- Full TypeScript support
