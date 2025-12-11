@@ -253,7 +253,7 @@ const resourceId = this.resourceMonitor.startMonitoring(
 **Impact:** npm package will be bloated, slow to download
 
 ---
-
+ 
 ### ERROR #13: GitHub Repository URL Wrong
 ```json
 // In package.json:
