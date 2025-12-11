@@ -37,7 +37,7 @@ The following behaviors are considered harassment and are unacceptable:
 To report violations or for any other code of conduct concerns, please contact:
 
 -   **Maintainer**: Arjun-M
--   **Email**: conduct@isobox.dev (Please use this email for Code of Conduct issues)
+-   **Email**: arjun@builderengine.space (Please use this email for Code of Conduct issues)
 
 ---
 
