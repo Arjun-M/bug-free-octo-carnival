@@ -98,7 +98,8 @@ export class ContextBuilder {
 
   private async injectGlobals(context: Record<string, any>): Promise<void> {
     const globals = this.globalsInjector.getAllGlobals();
-    globals['global'] = globals; // Circular reference for compatibility
+    // Do not inject 'global' with circular reference as it breaks isolated-vm transfer
+    // globals['global'] = globals;
     context._globals = globals;
   }
 
@@ -177,10 +178,6 @@ export class ContextBuilder {
 
   validateContext(context: Record<string, any>): void {
     const required = [
-      'Object',
-      'Array',
-      'String',
-      'Number',
       'console',
       '$fs',
       '$env',

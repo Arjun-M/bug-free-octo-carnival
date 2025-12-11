@@ -2,15 +2,13 @@
  * @fileoverview Global safe objects injector
  *
  * Injects only safe built-in globals into sandbox:
- * - Object, Array, String, Number, Boolean, Date, Math, JSON
- * - Promise, Set, Map, WeakMap, WeakSet
- * - Error types
  * - Optional: setTimeout, setInterval, clearTimeout, clearInterval
  *
  * Does NOT inject (security):
  * - process, Buffer, require
  * - Function, eval, constructor access
  * - Node.js APIs (fs, path, http, etc.)
+ * - Standard built-ins (Object, Array, etc.) as they are intrinsic to the isolate
  */
 
 /**
@@ -32,45 +30,9 @@ export class GlobalsInjector {
    * @returns Object with safe globals
    */
   getSafeGlobals(): Record<string, any> {
-    return {
-      // Global reference
-      globalThis: globalThis,
-
-      // Built-in constructors (safe)
-      Object,
-      Array,
-      String,
-      Number,
-      Boolean,
-      Symbol,
-      Date,
-      Math,
-      JSON,
-      Promise,
-      Set,
-      Map,
-      WeakMap,
-      WeakSet,
-
-      // Error types
-      Error,
-      TypeError,
-      RangeError,
-      ReferenceError,
-      SyntaxError,
-      EvalError,
-      URIError,
-
-      // Type checking
-      isNaN,
-      isFinite,
-      parseInt,
-      parseFloat,
-      encodeURI,
-      decodeURI,
-      encodeURIComponent,
-      decodeURIComponent,
-    };
+    // isolated-vm provides standard JS globals (Object, Array, etc.) intrinsically.
+    // We should NOT inject Host versions of these.
+    return {};
   }
 
   /**

@@ -180,48 +180,43 @@ export class IsoBox {
         // We need to inject _globals content into global.
 
         if (contextObj._globals) {
-            for (const key of Object.keys(contextObj._globals)) {
-                const value = contextObj._globals[key];
-                // isolated-vm requires Reference for objects or copy: true
-                // But passing objects directly usually fails if not transferable.
-                // We should use copy: true or reference: true.
-                // For primitives it works. For objects, we need care.
-                // global.setSync(key, value, { copy: true });
+          // We iterate over the globals and inject them into the sandbox context.
+          // Complex objects with functions (like console or fs) need special handling
+          // because they can't be deep-copied directly if they contain functions.
+          for (const key of Object.keys(contextObj._globals)) {
+             const value = contextObj._globals[key];
+             try {
+               if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                 const hasFunctions = Object.values(value).some(v => typeof v === 'function');
 
-                // However, ContextBuilder returns mixed content (functions, objects).
-                // Functions cannot be copied. They must be Reference?
-                // isolated-vm is tricky with this.
-                // If we pass a host function, it must be `new ivm.Reference(func)`?
-                // Or `setSync` handles it if it's a primitive or Reference.
+                 if (hasFunctions) {
+                    // Create an empty object in the sandbox to populate
+                    const ref = context.evalClosureSync(`return {}`, [], { result: { reference: true } });
+                    global.setSync(key, ref);
 
-                // Simplest fix for Phase 0 smoke test: catch error and log, or try/catch each.
-                // The error "TypeError: A non-transferable value was passed" suggests we are passing
-                // a host object/function without wrapping.
-
-                // Since this is critical for ContextBuilder to work, we need to wrap if necessary.
-                // But determining what to wrap is hard here without import ivm.
-
-                // Let's try basic assignment. If it fails, we skip.
-                // This is not ideal but "Fix All Bugs" implies we should have a working solution.
-                // But `isolated-vm` integration is complex.
-
-                try {
-                    // Try to set directly (for primitives)
-                    global.setSync(key, value);
-                } catch (e) {
-                    try {
-                        // For objects/functions, wrap in Reference or try copy
-                        if (typeof value === 'function' || (typeof value === 'object' && value !== null)) {
-                            // Using reference is safer for host objects/functions
-                            global.setSync(key, new ivm.Reference(value));
+                    // Populate properties (1-level deep supported for now)
+                    for (const prop of Object.keys(value)) {
+                        const propVal = value[prop];
+                        if (typeof propVal === 'function') {
+                            ref.setSync(prop, new ivm.Callback(propVal));
                         } else {
-                            global.setSync(key, value, { copy: true });
+                            ref.setSync(prop, propVal, { copy: true });
                         }
-                    } catch (e2) {
-                        logger.warn(`Failed to inject global '${key}': ${e2 instanceof Error ? e2.message : String(e2)}`);
                     }
-                }
-            }
+                 } else {
+                    // Pure data object
+                    global.setSync(key, value, { copy: true });
+                 }
+               } else if (typeof value === 'function') {
+                   global.setSync(key, new ivm.Callback(value));
+               } else {
+                   // Primitives or simple arrays
+                   global.setSync(key, value, { copy: true });
+               }
+             } catch (e) {
+                 logger.warn(`Failed to inject global '${key}': ${e instanceof Error ? e.message : String(e)}`);
+             }
+          }
         }
 
         // Execute
@@ -233,6 +228,10 @@ export class IsoBox {
             filename: opts.filename,
             code
         });
+
+        if (execResult.error) {
+            throw execResult.error;
+        }
 
         result = execResult.value;
         isolate.dispose();
