@@ -192,15 +192,20 @@ export class ImportResolver {
    * @returns Joined path
    */
   private joinPaths(base: string, relative: string): string {
-    if (relative === '.') {
-      return base;
+    const baseParts = base.split('/').filter(p => p.length > 0);
+    const relativeParts = relative.split('/').filter(p => p.length > 0 && p !== '.');
+
+    const resolvedParts = [...baseParts];
+
+    for (const part of relativeParts) {
+      if (part === '..') {
+        resolvedParts.pop();
+      } else {
+        resolvedParts.push(part);
+      }
     }
 
-    if (base === '/') {
-      return '/' + relative;
-    }
-
-    return base + '/' + relative;
+    return '/' + resolvedParts.join('/');
   }
 
   /**
@@ -209,17 +214,6 @@ export class ImportResolver {
    * @returns Normalized path
    */
   private normalizePath(path: string): string {
-    const parts = path.split('/').filter((p) => p && p !== '.');
-    const result: string[] = [];
-
-    for (const part of parts) {
-      if (part === '..') {
-        result.pop();
-      } else {
-        result.push(part);
-      }
-    }
-
-    return result.join('/');
+    return path;
   }
 }
