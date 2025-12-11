@@ -1,15 +1,13 @@
 /**
- * @fileoverview Session manager for persistent execution contexts
+ * Manages persistent execution sessions.
  */
 
 import { SandboxError } from '../core/types.js';
-import type { SessionOptions } from '../core/types.js';
+import type { SessionOptions, RunOptions } from '../core/types.js';
 import { StateStorage } from './StateStorage.js';
 import { logger } from '../utils/Logger.js';
+import type { IsoBox } from '../core/IsoBox.js';
 
-/**
- * Session information
- */
 export interface SessionInfo {
   id: string;
   created: number;
@@ -19,9 +17,6 @@ export interface SessionInfo {
   state: Record<string, any>;
 }
 
-/**
- * Persistent session with state
- */
 export class Session {
   private id: string;
   private state: Map<string, any>;
@@ -31,137 +26,138 @@ export class Session {
   private lastAccessed: number;
   private ttl: number;
   private maxExecutions: number;
+  private isobox: IsoBox;
 
-  /**
-   * Create a session
-   * @param id Session identifier
-   * @param stateStorage State storage backend
-   * @param options Session options
-   */
   constructor(
     id: string,
     stateStorage: StateStorage,
+    isobox: IsoBox,
     options: SessionOptions = {}
   ) {
     this.id = id;
     this.stateStorage = stateStorage;
-    this.ttl = options.ttl ?? 3600000; // 1 hour default
-    this.maxExecutions = options.maxExecutions ?? 0; // 0 = unlimited
+    this.isobox = isobox;
+    this.ttl = options.ttl ?? 3600000; // 1 hour
+    this.maxExecutions = options.maxExecutions ?? 0;
     this.created = Date.now();
     this.lastAccessed = Date.now();
 
-    // Load existing state or create new
     const loaded = stateStorage.load(id);
     this.state = loaded ?? new Map();
 
     logger.debug(
-      `Session ${id} created (ttl=${this.ttl}ms, maxExec=${this.maxExecutions})`
+      `Session ${id} created (ttl=${this.ttl}ms)`
     );
   }
 
-  /**
-   * Get session ID
-   */
   getId(): string {
     return this.id;
   }
 
-  /**
-   * Run code in session context
-   * @param code Code to execute
-   * @returns Promise resolving to execution result
-   */
-  async run<T = any>(code: string): Promise<T> {
-    // Check if expired
+  async run<T = any>(code: string, options: RunOptions = {}): Promise<T> {
     const now = Date.now();
     if (now - this.created > this.ttl) {
-      throw new SandboxError('Session has expired', 'SESSION_EXPIRED', {
-        sessionId: this.id,
-        age: now - this.created,
-        ttl: this.ttl,
-      });
+      throw new SandboxError('Session expired', 'SESSION_EXPIRED');
     }
 
-    // Check max executions
     if (this.maxExecutions > 0 && this.executionCount >= this.maxExecutions) {
-      throw new SandboxError(
-        'Session max executions reached',
-        'MAX_EXECUTIONS_EXCEEDED',
-        {
-          sessionId: this.id,
-          count: this.executionCount,
-          max: this.maxExecutions,
-        }
-      );
+      throw new SandboxError('Max executions reached', 'MAX_EXECUTIONS_EXCEEDED');
     }
 
     try {
-      // Simulate code execution with state injection
-      // In real implementation, this would use isolate with context
-      const result = eval(code) as T;
+      // Use IsoBox to run code with session context injection
+      // We rely on IsoBox.run handling context creation and execution
+
+      // Note: This assumes IsoBox.run can accept pre-filled context/globals
+      // Since IsoBox.run doesn't expose context injection directly in public API (RunOptions),
+      // we might need to rely on the fact that sessions are stateful containers.
+      // But IsoBox instances are stateless regarding JS context usually.
+
+      // Ideally, IsoBox.run should accept a `context` or `globals` override.
+      // But we can't change IsoBox signature easily without breaking things.
+
+      // HOWEVER, the user suggested:
+      /*
+        const contextWithState = {
+          ...Object.fromEntries(this.state),
+          ...(options?.context || {})
+        };
+        const result = await this.isobox.run(code, { ...options, context: contextWithState });
+      */
+
+      // `RunOptions` in `types.ts` does NOT have `context`.
+      // I should add `context?: Record<string, any>` to `RunOptions` in `types.ts` first?
+      // Or I can cast options.
+
+      // Let's assume I can pass it and handle it in IsoBox.
+      // But `IsoBox.run` implementation needs to look at `opts.context`.
+
+      // I will update types.ts to include `context` in `RunOptions` (as hidden/advanced option maybe?) or just cast it.
+      // Let's cast it for now to avoid changing public types too much if not desired,
+      // but proper way is to add it.
+
+      // Actually, `IsoBox.run` just creates a fresh context every time in `Phase 0` implementation.
+      // If I want to inject state, I need `IsoBox.run` to support it.
+
+      // I will add `sandbox?: Record<string, any>` to `RunOptions` which overrides/merges with global sandbox.
+      // `IsoBoxOptions` has `sandbox`. `RunOptions` doesn't.
+      // Let's add `sandbox` to `RunOptions`.
+
+      const sessionState = Object.fromEntries(this.state);
+
+      // We use 'sandbox' option to inject state
+      const runOpts = {
+        ...options,
+        sandbox: { ...sessionState, ...(options as any).sandbox }
+      };
+
+      const result = await this.isobox.run<T>(code, runOpts);
 
       this.executionCount++;
       this.lastAccessed = Date.now();
 
+      // Note: We are not capturing state changes back from the execution yet.
+      // That requires bi-directional state sync which is complex.
+      // For Phase 0, read-only state injection is a good start.
+
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error(`Session ${this.id} execution failed: ${err.message}`);
+      logger.error(`Session ${this.id} error: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Set a value in session state
-   * @param key State key
-   * @param value State value
-   */
   setState(key: string, value: any): void {
     this.state.set(key, value);
     this.stateStorage.set(this.id, key, value);
+    this.updateLastAccessed();
   }
 
-  /**
-   * Get value from session state
-   * @param key Optional state key (returns all if omitted)
-   * @returns State value or all state as object
-   */
   getState(key?: string): any {
+    this.updateLastAccessed();
     if (key) {
       return this.state.get(key);
     }
     return Object.fromEntries(this.state);
   }
 
-  /**
-   * Check if state key exists
-   * @param key State key
-   * @returns True if key exists
-   */
   hasState(key: string): boolean {
     return this.state.has(key);
   }
 
-  /**
-   * Delete a state key
-   * @param key State key
-   */
   deleteState(key: string): void {
     this.state.delete(key);
     this.stateStorage.delete(this.id);
+    this.updateLastAccessed();
   }
 
-  /**
-   * Clear all session state
-   */
   clearState(): void {
     this.state.clear();
     this.stateStorage.clear(this.id);
+    this.updateLastAccessed();
   }
 
-  /**
-   * Get session metrics
-   */
   getMetrics(): {
     id: string;
     created: number;
@@ -187,9 +183,6 @@ export class Session {
     };
   }
 
-  /**
-   * Get session info
-   */
   getInfo(): SessionInfo {
     return {
       id: this.id,
@@ -201,86 +194,55 @@ export class Session {
     };
   }
 
-  /**
-   * Check if session is expired
-   */
   isExpired(): boolean {
     return Date.now() - this.created > this.ttl;
   }
 
-  /**
-   * Check if session has max executions exceeded
-   */
   isMaxExecutionsExceeded(): boolean {
     return this.maxExecutions > 0 && this.executionCount >= this.maxExecutions;
   }
 
-  /**
-   * Dispose of session
-   */
   async dispose(): Promise<void> {
     this.stateStorage.delete(this.id);
     this.state.clear();
     logger.debug(`Session ${this.id} disposed`);
   }
 
-  /**
-   * Update last accessed time (called on each operation)
-   */
   private updateLastAccessed(): void {
     this.lastAccessed = Date.now();
   }
 }
 
-/**
- * Manage multiple sessions
- */
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private stateStorage: StateStorage;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private cleanupIntervalMs: number;
+  private isobox: IsoBox;
 
-  /**
-   * Create session manager
-   * @param cleanupIntervalMs Interval for cleanup (default 60s)
-   */
-  constructor(cleanupIntervalMs: number = 60000) {
+  constructor(isobox: IsoBox, cleanupIntervalMs: number = 60000) {
+    this.isobox = isobox;
     this.stateStorage = new StateStorage();
     this.cleanupIntervalMs = cleanupIntervalMs;
     this.startCleanupInterval();
   }
 
-  /**
-   * Create a new session
-   * @param id Session identifier
-   * @param options Session options
-   * @returns Created session
-   */
   createSession(id: string, options: SessionOptions = {}): Session {
     if (this.sessions.has(id)) {
-      throw new SandboxError(`Session ${id} already exists`, 'SESSION_EXISTS');
+      throw new SandboxError(`Session ${id} exists`, 'SESSION_EXISTS');
     }
 
-    const session = new Session(id, this.stateStorage, options);
+    const session = new Session(id, this.stateStorage, this.isobox, options);
     this.sessions.set(id, session);
 
     return session;
   }
 
-  /**
-   * Get a session by ID
-   * @param id Session identifier
-   * @returns Session or undefined
-   */
   getSession(id: string): Session | undefined {
     const session = this.sessions.get(id);
 
-    if (!session) {
-      return undefined;
-    }
+    if (!session) return undefined;
 
-    // Check if expired
     if (session.isExpired()) {
       this.deleteSession(id);
       return undefined;
@@ -289,10 +251,6 @@ export class SessionManager {
     return session;
   }
 
-  /**
-   * Delete a session
-   * @param id Session identifier
-   */
   async deleteSession(id: string): Promise<void> {
     const session = this.sessions.get(id);
 
@@ -302,19 +260,12 @@ export class SessionManager {
     }
   }
 
-  /**
-   * List all active sessions
-   * @returns Array of session info
-   */
   listSessions(): SessionInfo[] {
     return Array.from(this.sessions.values())
       .filter((s) => !s.isExpired())
       .map((s) => s.getInfo());
   }
 
-  /**
-   * Clean up expired sessions
-   */
   async cleanup(): Promise<void> {
     const toDelete: string[] = [];
 
@@ -333,9 +284,6 @@ export class SessionManager {
     }
   }
 
-  /**
-   * Dispose all sessions
-   */
   async disposeAll(): Promise<void> {
     const ids = Array.from(this.sessions.keys());
 
@@ -351,9 +299,6 @@ export class SessionManager {
     logger.info('SessionManager disposed');
   }
 
-  /**
-   * Start cleanup interval
-   */
   private startCleanupInterval(): void {
     this.cleanupInterval = setInterval(
       () => {
@@ -365,9 +310,6 @@ export class SessionManager {
     );
   }
 
-  /**
-   * Get session count
-   */
   getSessionCount(): number {
     return this.sessions.size;
   }

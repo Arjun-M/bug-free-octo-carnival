@@ -1,12 +1,11 @@
 /**
- * @fileoverview Memory usage tracking and profiling
+ * Tracks memory usage over time.
+ * Note: This tracks HOST process memory, not isolated-vm memory directly.
+ * For VM memory, use ResourceMonitor.
  */
 
 import { logger } from '../utils/Logger.js';
 
-/**
- * Memory snapshot
- */
 export interface MemorySnapshot {
   timestamp: number;
   heapUsed: number;
@@ -15,9 +14,6 @@ export interface MemorySnapshot {
   arrayBuffers?: number;
 }
 
-/**
- * Memory statistics
- */
 export interface MemoryStats {
   min: number;
   max: number;
@@ -27,12 +23,9 @@ export interface MemoryStats {
   snapshots: number;
 }
 
-/**
- * Tracks memory usage over time
- */
 export class MemoryTracker {
   private snapshots: MemorySnapshot[] = [];
-  private interval: NodeJS.Timer | null = null;
+  private interval: NodeJS.Timeout | null = null; // Fix: NodeJS.Timer -> NodeJS.Timeout
   private intervalMs: number = 100;
   private maxSnapshots: number = 1000;
   private baseMemory: number = 0;
@@ -41,13 +34,9 @@ export class MemoryTracker {
     this.intervalMs = intervalMs;
     this.baseMemory = this.captureMemory().heapUsed;
 
-    logger.debug(`MemoryTracker initialized (interval: ${intervalMs}ms)`);
+    logger.debug(`MemoryTracker ready (interval: ${intervalMs}ms)`);
   }
 
-  /**
-   * Capture current memory snapshot
-   * @returns Memory snapshot
-   */
   private captureMemory(): MemorySnapshot {
     let heapUsed = 0;
     let heapTotal = 0;
@@ -71,12 +60,8 @@ export class MemoryTracker {
     };
   }
 
-  /**
-   * Start tracking memory
-   */
   start(): void {
     if (this.interval) {
-      logger.warn('Memory tracking already started');
       return;
     }
 
@@ -87,7 +72,6 @@ export class MemoryTracker {
       const snapshot = this.captureMemory();
       this.snapshots.push(snapshot);
 
-      // Keep only last N snapshots
       if (this.snapshots.length > this.maxSnapshots) {
         this.snapshots.shift();
       }
@@ -96,38 +80,22 @@ export class MemoryTracker {
     logger.debug('Memory tracking started');
   }
 
-  /**
-   * Stop tracking memory
-   */
   stop(): void {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
-
       logger.debug('Memory tracking stopped');
     }
   }
 
-  /**
-   * Get current memory usage
-   * @returns Current memory in bytes
-   */
   getCurrentMemory(): number {
     return this.captureMemory().heapUsed;
   }
 
-  /**
-   * Get memory delta from start
-   * @returns Memory change in bytes
-   */
   getMemoryDelta(): number {
     return this.getCurrentMemory() - this.baseMemory;
   }
 
-  /**
-   * Get memory statistics
-   * @returns Memory statistics
-   */
   getStats(): MemoryStats {
     if (this.snapshots.length === 0) {
       return {
@@ -156,96 +124,51 @@ export class MemoryTracker {
     };
   }
 
-  /**
-   * Get all snapshots
-   * @returns Array of memory snapshots
-   */
   getSnapshots(): MemorySnapshot[] {
     return [...this.snapshots];
   }
 
-  /**
-   * Get snapshot at index
-   * @param index Snapshot index
-   * @returns Memory snapshot or undefined
-   */
   getSnapshot(index: number): MemorySnapshot | undefined {
     return this.snapshots[index];
   }
 
-  /**
-   * Get latest snapshot
-   * @returns Latest memory snapshot or undefined
-   */
   getLatestSnapshot(): MemorySnapshot | undefined {
     return this.snapshots[this.snapshots.length - 1];
   }
 
-  /**
-   * Get memory growth rate (bytes per second)
-   * @returns Growth rate
-   */
   getGrowthRate(): number {
-    if (this.snapshots.length < 2) {
-      return 0;
-    }
+    if (this.snapshots.length < 2) return 0;
 
     const first = this.snapshots[0];
     const last = this.snapshots[this.snapshots.length - 1];
     const timeMs = last.timestamp - first.timestamp;
     const memoryDelta = last.heapUsed - first.heapUsed;
 
-    if (timeMs === 0) {
-      return 0;
-    }
-
-    // Return bytes per second
+    if (timeMs === 0) return 0;
     return (memoryDelta / timeMs) * 1000;
   }
 
-  /**
-   * Detect memory leaks (heuristic)
-   * @returns Potential leak detected
-   */
   detectLeak(): boolean {
     const stats = this.getStats();
     const growthRate = this.getGrowthRate();
-
-    // Heuristic: if consistently growing and delta > threshold
     const totalDelta = stats.delta;
     const avgMemory = stats.avg;
 
-    // If delta is more than 10% of average and growth rate is positive
     return totalDelta > avgMemory * 0.1 && growthRate > 0;
   }
 
-  /**
-   * Get memory usage as percentage of heap
-   * @returns Percentage (0-100)
-   */
   getHeapUsagePercent(): number {
     const latest = this.getLatestSnapshot();
-    if (!latest || latest.heapTotal === 0) {
-      return 0;
-    }
-
+    if (!latest || latest.heapTotal === 0) return 0;
     return (latest.heapUsed / latest.heapTotal) * 100;
   }
 
-  /**
-   * Reset tracking
-   */
   reset(): void {
     this.snapshots = [];
     this.baseMemory = this.captureMemory().heapUsed;
-
     logger.debug('Memory tracking reset');
   }
 
-  /**
-   * Get human-readable stats
-   * @returns Formatted string
-   */
   toString(): string {
     const stats = this.getStats();
     const growthRate = this.getGrowthRate();
@@ -265,18 +188,11 @@ export class MemoryTracker {
     );
   }
 
-  /**
-   * Format bytes to human-readable format
-   * @param bytes Bytes to format
-   * @returns Formatted string
-   */
   private formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
-
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }

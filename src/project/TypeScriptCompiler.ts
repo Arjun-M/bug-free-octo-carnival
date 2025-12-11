@@ -106,7 +106,7 @@ export class TypeScriptCompiler {
     // Remove property type annotations
     // x: number; → x;
     // x: string = 'test'; → x = 'test';
-    js = js.replace(/(\w+)\s*:\s*([^=;]+);/g, (match, name, type) => {
+    js = js.replace(/(\w+)\s*:\s*([^=;]+);/g, (_match, name, _type) => {
       return `${name};`;
     });
     js = js.replace(/(\w+)\s*:\s*[^=]+\s*=/g, '$1 =');
@@ -174,18 +174,22 @@ export class TypeScriptCompiler {
     // Check for missing type annotations in strict mode
     if (this.compilerOptions.strict) {
       const implicitAnyPattern = /(?<!:)\s+(?:function|const|let|var)\s+(\w+)\s*\(/g;
-      let match;
-      while ((match = implicitAnyPattern.exec(code)) !== null) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      while (implicitAnyPattern.exec(code) !== null) {
         // Would need more context to properly detect
       }
     }
 
     // Check for unused variables (warning)
     const varPattern = /(?:const|let|var)\s+(\w+)\s*=/g;
-    while ((match = varPattern.exec(code)) !== null) {
-      const varName = match[1];
+    // We need a new match variable here because the previous one is block-scoped (let match)
+    // Wait, the previous 'match' was declared with 'let' inside the if block.
+    // So it's not accessible here. We need to declare a new one.
+    let varMatch: RegExpExecArray | null;
+    while ((varMatch = varPattern.exec(code)) !== null) {
+      const varName = varMatch[1];
       // Simple heuristic: warn if variable not used after declaration
-      const restCode = code.substring(match.index + match[0].length);
+      const restCode = code.substring(varMatch.index + varMatch[0].length);
       if (!restCode.includes(varName)) {
         warnings.push(`Unused variable: ${varName}`);
       }

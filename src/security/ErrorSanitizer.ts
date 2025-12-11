@@ -87,7 +87,7 @@ export class ErrorSanitizer {
 
     // Remove Node.js internal module references
     sanitized = sanitized.replace(
-      /at.*\(node:internal\/[^\)]+\)/g,
+      /at.*\(node:internal\/[^)]+\)/g,
       'at [node:internal]'
     );
     sanitized = sanitized.replace(/at (Module|Function)_runMain.*\n/g, '');

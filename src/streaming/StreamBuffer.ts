@@ -21,9 +21,10 @@ export class StreamBuffer<T> {
   private config: Required<BufferConfig>;
   private isPaused: boolean = false;
   private drainCallbacks: Array<() => void> = [];
+  // eslint-disable-next-line @typescript-eslint/ban-types
   private listeners: Map<string, Set<Function>> = new Map();
 
-  constructor(config: BufferConfig = {}) {
+  constructor(config: Partial<BufferConfig> = {}) {
     this.config = {
       maxSize: config.maxSize ?? 1000,
       highWaterMark: config.highWaterMark ?? 800,
@@ -208,6 +209,7 @@ export class StreamBuffer<T> {
    * @param event Event name
    * @param handler Handler function
    */
+  // eslint-disable-next-line @typescript-eslint/ban-types
   on(event: string, handler: Function): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
@@ -220,6 +222,7 @@ export class StreamBuffer<T> {
    * @param event Event name
    * @param handler Handler function
    */
+  // eslint-disable-next-line @typescript-eslint/ban-types
   off(event: string, handler: Function): void {
     const handlers = this.listeners.get(event);
     if (handlers) {

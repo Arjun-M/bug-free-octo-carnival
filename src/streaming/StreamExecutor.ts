@@ -4,7 +4,6 @@
 
 import { logger } from '../utils/Logger.js';
 import {
-  isGenerator,
   getIterator,
   withTimeout,
 } from './GeneratorHandler.js';
@@ -75,7 +74,20 @@ export class StreamExecutor {
 
     // Consume iterator with timeout
     try {
-      for await (const item of withTimeout(iterator, timeout)) {
+      // Ensure iterator is AsyncIterable
+      const asyncIterable: AsyncIterable<any> = {
+        [Symbol.asyncIterator]() {
+          if (Symbol.asyncIterator in iterator) {
+             return (iterator as AsyncIterable<any>)[Symbol.asyncIterator]();
+          }
+          const syncIter = (iterator as Iterable<any>)[Symbol.iterator]();
+          return {
+            next: async () => syncIter.next(),
+          };
+        }
+      };
+
+      for await (const item of withTimeout(asyncIterable, timeout)) {
         logger.debug('Yielding stream item');
         yield item;
       }

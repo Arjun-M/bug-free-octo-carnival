@@ -2,7 +2,7 @@
  * @fileoverview File system tree node representing file or directory
  */
 
-import { FileMetadata, type IFileMetadata } from './FileMetadata.js';
+import { FileMetadata } from './FileMetadata.js';
 import { PERMISSIONS } from './Permissions.js';
 
 /**

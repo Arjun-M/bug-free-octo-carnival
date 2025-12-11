@@ -140,7 +140,7 @@ export function serializeForTransfer(value: any): string {
  * @param obj Object to wrap
  * @returns Proxy with access restrictions
  */
-export function createSafeProxy(obj: any): Proxy {
+export function createSafeProxy(obj: any): any {
   const blacklist = new Set(['constructor', '__proto__', 'prototype']);
 
   return new Proxy(obj, {
