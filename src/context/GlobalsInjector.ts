@@ -11,11 +11,15 @@
  * - Standard built-ins (Object, Array, etc.) as they are intrinsic to the isolate
  */
 
+import ivm from 'isolated-vm';
+
 /**
  * Inject safe global objects into sandbox context
  */
 export class GlobalsInjector {
   private allowTimers: boolean;
+  private activeTimers: Map<number, NodeJS.Timeout> = new Map();
+  private timerIdCounter = 0;
 
   /**
    * Create globals injector
@@ -42,13 +46,67 @@ export class GlobalsInjector {
     const globals = this.getSafeGlobals();
 
     if (this.allowTimers) {
-      globals['setTimeout'] = setTimeout;
-      globals['setInterval'] = setInterval;
-      globals['clearTimeout'] = clearTimeout;
-      globals['clearInterval'] = clearInterval;
+      // Wrapper for setTimeout to handle ivm.Callback/Reference
+      globals['setTimeout'] = (callback: any, delay: number, ...args: any[]) => {
+          if (typeof callback === 'object' && (callback.applySync || callback.apply)) {
+              const id = ++this.timerIdCounter;
+              const timer = setTimeout(() => {
+                  this.activeTimers.delete(id);
+                  try {
+                      // Call the function in the sandbox
+                      callback.applySync ? callback.applySync(undefined, args) : callback.apply(undefined, args);
+                  } catch (e) {
+                      // Isolate might be disposed
+                  }
+              }, delay);
+              this.activeTimers.set(id, timer);
+              return id; // Return primitive ID
+          }
+      };
+
+      globals['setInterval'] = (callback: any, delay: number, ...args: any[]) => {
+         if (typeof callback === 'object' && (callback.applySync || callback.apply)) {
+             const id = ++this.timerIdCounter;
+             const timer = setInterval(() => {
+                  try {
+                       callback.applySync ? callback.applySync(undefined, args) : callback.apply(undefined, args);
+                  } catch (e) {
+                      // Stop interval if execution fails (e.g. isolate disposed)
+                      clearInterval(timer);
+                      this.activeTimers.delete(id);
+                  }
+             }, delay);
+             this.activeTimers.set(id, timer);
+             return id; // Return primitive ID
+         }
+      };
+
+      globals['clearTimeout'] = (id: any) => {
+          if (typeof id === 'number' && this.activeTimers.has(id)) {
+              clearTimeout(this.activeTimers.get(id));
+              this.activeTimers.delete(id);
+          }
+      };
+      globals['clearInterval'] = (id: any) => {
+          if (typeof id === 'number' && this.activeTimers.has(id)) {
+              clearInterval(this.activeTimers.get(id));
+              this.activeTimers.delete(id);
+          }
+      };
     }
 
     return globals;
+  }
+
+  /**
+   * Clear all active timers
+   */
+  dispose(): void {
+    for (const timer of this.activeTimers.values()) {
+      clearTimeout(timer);
+      clearInterval(timer);
+    }
+    this.activeTimers.clear();
   }
 
   /**
