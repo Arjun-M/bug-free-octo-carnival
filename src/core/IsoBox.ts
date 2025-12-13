@@ -137,9 +137,10 @@ export class IsoBox {
       timestamp: Date.now(),
     });
 
-    let isolate: ivm.Isolate | undefined; // CRITICAL FIX: Hoist declaration
-    let builder: ContextBuilder | undefined; // CRITICAL FIX: Hoist declaration
-    let execResult: ExecutionResult<T> | undefined; // CRITICAL FIX: Hoist declaration
+        let isolate: ivm.Isolate | undefined;
+        let builder: ContextBuilder | undefined;
+        let execResult: ExecutionResult<T> | undefined;
+        const callbacks: ivm.Callback[] = []; // CRITICAL FIX: Initialize callbacks array outside try block
 
     try {
       let result: T;
@@ -153,10 +154,12 @@ export class IsoBox {
         result = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
         // Since we don't have metrics from the pool, we'll use placeholders for now.
         execResult = { value: result, duration: opts.timeout ?? this.timeout, cpuTime: 0 };
-      } else {
-        isolate = this.isolateManager.create({ // CRITICAL FIX: Use hoisted variable
-            memoryLimit: this.memoryLimit
-        });
+          } else {
+            const { isolate: newIsolate } = this.isolateManager.create({
+                memoryLimit: this.memoryLimit
+            });
+            isolate = newIsolate; // CRITICAL FIX: Assign to hoisted variable
+    
 
         // Initialize context with globals, fs, etc.
         // ExecutionEngine.setupExecutionContext creates a raw context.
@@ -167,10 +170,7 @@ export class IsoBox {
         const context = isolate.createContextSync();
         const global = context.global;
 
-        // CRITICAL FIX: Store ivm.Callback references for later disposal
-        const callbacks: ivm.Callback[] = [];
-
-        // Use ContextBuilder to get safe globals
+            // Use ContextBuilder to get safe globals
         builder = new ContextBuilder({ // CRITICAL FIX: Use hoisted variable
             ...this.options,
             memfs: this.memfs,
@@ -239,20 +239,7 @@ export class IsoBox {
         }
 
         // Execute
-        const execResult = await this.executionEngine.execute<T>(code, isolate, context, {
-            timeout,
-            cpuTimeLimit: this.cpuTimeLimit,
-            memoryLimit: this.memoryLimit,
-            strictTimeout: this.strictTimeout,
-            filename: opts.filename,
-            code
-        });
-
-        if (execResult.error) {
-            throw execResult.error;
-        }
-
-        execResult = await this.executionEngine.execute<T>(code, isolate, context, { // CRITICAL FIX: Assign to hoisted variable
+        execResult = await this.executionEngine.execute<T>(code, isolate, context, {
             timeout,
             cpuTimeLimit: this.cpuTimeLimit,
             memoryLimit: this.memoryLimit,
@@ -268,85 +255,60 @@ export class IsoBox {
         result = execResult.value;
       }
 
-      // CRITICAL FIX: Check if execResult is defined before accessing its properties
-      if (execResult) {
-        this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.memoryUsed ?? 0);
-
-        this.emit('execution', {
-          type: 'complete',
-          id: executionId,
-          duration: execResult.duration, // Use actual duration
-          timestamp: Date.now(),
-        });
+          // CRITICAL FIX: Check if execResult is defined before accessing its properties
+          if (execResult) {
+            this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.memoryUsed ?? 0);
+    
+            this.emit('execution', {
+              type: 'complete',
+              id: executionId,
+              duration: execResult.duration, // Use actual duration
+              timestamp: Date.now(),
+            });
+          }
+    
+          return result;
+        } catch (error) {
+          this.globalMetrics.errorCount++;
+    
+          let errorObj: Error;
+          if (error instanceof Error) {
+            errorObj = error;
+          } else if (typeof error === 'object' && error !== null && 'message' in error) {
+             // Handle SanitizedError or similar objects
+             const msg = (error as any).message;
+             errorObj = new Error(msg);
+             if ((error as any).stack) errorObj.stack = (error as any).stack;
+             // Copy other properties if needed
+             if ((error as any).code) (errorObj as any).code = (error as any).code;
+          } else {
+            errorObj = new Error(String(error));
+          }
+    
+          this.emit('execution', {
+            type: 'error',
+            id: executionId,
+            error: errorObj.message,
+            timestamp: Date.now(),
+          });
+    
+          throw errorObj;
+        } finally {
+          // CRITICAL FIX: Ensure isolate and builder are disposed to prevent memory leaks
+          // Dispose of all ivm.Callback objects to prevent memory leaks
+          callbacks.forEach(cb => cb.dispose());
+    
+          if (isolate) {
+            // CRITICAL FIX: Use IsolateManager's disposeIsolate to ensure proper untracking
+            this.isolateManager.disposeIsolate(isolate);
+          }
+          if (builder) {
+            builder.dispose();
+          }
+        }
       }
-
-      return result;
-    } catch (error) {
-      this.globalMetrics.errorCount++;
-
-      let errorObj: Error;
-      if (error instanceof Error) {
-        errorObj = error;
-      } else if (typeof error === 'object' && error !== null && 'message' in error) {
-         // Handle SanitizedError or similar objects
-         const msg = (error as any).message;
-         errorObj = new Error(msg);
-         if ((error as any).stack) errorObj.stack = (error as any).stack;
-         // Copy other properties if needed
-         if ((error as any).code) (errorObj as any).code = (error as any).code;
-      } else {
-        errorObj = new Error(String(error));
-      }
-
-      this.emit('execution', {
-        type: 'error',
-        id: executionId,
-        error: errorObj.message,
-        timestamp: Date.now(),
-      });
-
-      throw errorObj;
-    } finally {
-      // CRITICAL FIX: Ensure isolate and builder are disposed to prevent memory leaks
-      if (callbacks) {
-        // CRITICAL FIX: Dispose of all ivm.Callback objects to prevent memory leaks
-        callbacks.forEach(cb => cb.dispose());
-      }
-      if (isolate) {
-        isolate.dispose();
-      }
-      if (builder) {
-        builder.dispose();
-      }
-    }
-      this.globalMetrics.errorCount++;
-
-      let errorObj: Error;
-      if (error instanceof Error) {
-        errorObj = error;
-      } else if (typeof error === 'object' && error !== null && 'message' in error) {
-         // Handle SanitizedError or similar objects
-         const msg = (error as any).message;
-         errorObj = new Error(msg);
-         if ((error as any).stack) errorObj.stack = (error as any).stack;
-         // Copy other properties if needed
-         if ((error as any).code) (errorObj as any).code = (error as any).code;
-      } else {
-        errorObj = new Error(String(error));
-      }
-
-      this.emit('execution', {
-        type: 'error',
-        id: executionId,
-        error: errorObj.message,
-        timestamp: Date.now(),
-      });
-
-      throw errorObj;
-    }
-  }
-
-  async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> { // MAJOR FIX: Make async and accept language
+    
+      async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> { // MAJOR FIX: Make async and accept language
     this.ensureNotDisposed();
 
     if (!code?.trim()) {
@@ -516,4 +478,3 @@ export class IsoBox {
   getIsolatePool(): IsolatePool | null { return this.isolatePool; }
   getSessionManager(): SessionManager { return this.sessionManager; }
 }
-
