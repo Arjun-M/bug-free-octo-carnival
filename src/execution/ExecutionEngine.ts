@@ -103,20 +103,19 @@ export class ExecutionEngine {
     );
 
     try {
-          // Compile
-          // MAJOR FIX: Use ivm's built-in timeout for compilation to avoid external promise race issues
-          const script = await isolate.compileScript(code, {
-            filename: options.filename || 'script',
-            timeout: options.timeout, // Use the full execution timeout for compilation
-          });
+      // Compile
+      // MAJOR FIX: Use ivm's built-in timeout for compilation to avoid external promise race issues
+      const script = await isolate.compileScript(code, {
+        filename: options.filename || 'script',
+        timeout: options.timeout,
+      });
 
       // Run
-          // Run
-          // Use ivm's built-in timeout for execution
-          const result = await script.run(context, {
-            timeout: options.timeout,
-            promise: true,
-          });
+      // Use ivm's built-in timeout for execution
+      const result = await script.run(context, {
+        timeout: options.timeout,
+        promise: true,
+      });
 
       const duration = timer.stop();
 
@@ -185,10 +184,6 @@ export class ExecutionEngine {
     // necessarily hold a reference to its parent Isolate.
     return this.execute(code, isolate, context, options);
   }
-
-
-
-
 
   /**
    * Move result from VM to Host.
