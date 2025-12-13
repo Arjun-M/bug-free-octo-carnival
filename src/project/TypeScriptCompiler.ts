@@ -78,7 +78,7 @@ export class TypeScriptCompiler {
    * @param code TypeScript code
    * @returns JavaScript code
    */
-  transpile(code: string): string {
+  static transpile(code: string): string {
     let js = code;
 
     // Remove type annotations from parameters
