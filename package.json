@@ -33,7 +33,9 @@
     "typescript",
     "security",
     "isolate",
-    "vm",
+    "vm", "vm2",
+    "isolated-vm",
+    "ai-sandbox",
     "untrusted-code"
   ],
   "author": "Arjun-M",
