@@ -103,21 +103,20 @@ export class ExecutionEngine {
     );
 
     try {
-      // Compile
-      const script = await this.createTimeoutPromise(
-        isolate.compileScript(code, {
-          filename: options.filename || 'script',
-        }),
-        options.timeout * 0.5 // Compile shouldn't take > 50% of time
-      );
+          // Compile
+          // MAJOR FIX: Use ivm's built-in timeout for compilation to avoid external promise race issues
+          const script = await isolate.compileScript(code, {
+            filename: options.filename || 'script',
+            timeout: options.timeout, // Use the full execution timeout for compilation
+          });
 
       // Run
-      // CRITICAL FIX: Rely on the ivm built-in graceful timeout (options.timeout)
-      // The external createTimeoutPromise is redundant and can mask the ivm timeout error.
-      const result = await script.run(context, {
-        timeout: options.timeout,
-        promise: true,
-      });
+          // Run
+          // Use ivm's built-in timeout for execution
+          const result = await script.run(context, {
+            timeout: options.timeout,
+            promise: true,
+          });
 
       const duration = timer.stop();
 
@@ -189,24 +188,7 @@ export class ExecutionEngine {
 
 
 
-  /**
-   * Promise with a timeout.
-   */
-  private createTimeoutPromise<T>(
-    promise: Promise<T>,
-    timeoutMs: number
-  ): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        const timer = setTimeout(() => {
-          reject(new TimeoutError('Compilation timeout exceeded', timeoutMs));
-        }, timeoutMs);
-        // CRITICAL FIX: Clear the timer when the promise resolves/rejects
-        promise.finally(() => clearTimeout(timer));
-      }),
-    ]);
-  }
+
 
   /**
    * Move result from VM to Host.
