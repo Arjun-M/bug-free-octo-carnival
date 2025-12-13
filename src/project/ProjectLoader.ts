@@ -127,7 +127,8 @@ export class ProjectLoader {
     }
 
     for (const file of project.files) {
-      const code = Buffer.isBuffer(file.code)
+      // MAJOR FIX: Ensure code is passed as string or Buffer, not just string
+      const code: string | Buffer = Buffer.isBuffer(file.code)
         ? file.code
         : file.code as string;
 
@@ -187,8 +188,10 @@ export class ProjectLoader {
     const tree = new Map<string, string>();
 
     for (const file of files) {
+      // MAJOR FIX: buildFileTree should only be used for source code (text),
+      // so converting Buffer to string is acceptable, but should use 'utf8' encoding.
       const code = Buffer.isBuffer(file.code)
-        ? file.code.toString()
+        ? file.code.toString('utf8')
         : (file.code as string);
 
       tree.set(file.path, code);
