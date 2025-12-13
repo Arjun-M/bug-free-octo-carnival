@@ -41,14 +41,15 @@
   "author": "Arjun-M",
   "repository": {
     "type": "git",
-    "url": "Arjun-M/Isobox"
+    "url": "https://github.com/Arjun-M/Isobox"
   },
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "isolated-vm": "^5.0.0"
+    "isolated-vm": "^5.0.0",
+    "typescript": "^5.3.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
