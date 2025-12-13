@@ -20,6 +20,8 @@ export interface TimeoutHandle {
   timeoutMs: number;
   /** Whether timeout has been triggered. */
   triggered: boolean;
+  /** Whether a warning has been emitted. */
+  warned: boolean; // MINOR FIX: Added flag to prevent duplicate warnings
   /** Reason for timeout if triggered. */
   reason?: string;
 }
@@ -93,7 +95,9 @@ export class TimeoutManager {
       }
 
       // 3. Heads up warning at 80%
-      if (elapsed >= timeoutMs * 0.8 && lastCpuTime < timeoutMs * 0.8) {
+      const warningThreshold = timeoutMs * 0.8;
+      if (elapsed >= warningThreshold && !handle.warned) { // MINOR FIX: Check if warning was already sent
+        handle.warned = true; // Mark as warned
         this.eventEmitter.emit('warning', {
           id,
           elapsed,
@@ -112,6 +116,7 @@ export class TimeoutManager {
       startTime,
       timeoutMs,
       triggered: false,
+      warned: false, // MINOR FIX: Initialize warned flag
     };
 
     this.timeouts.set(id, handle);
