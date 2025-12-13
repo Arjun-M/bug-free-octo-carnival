@@ -155,35 +155,27 @@ export class ContextBuilder {
     context._globals.$fs = fs_obj;
   }
 
-  private async injectRequire(context: Record<string, any>): Promise<void> {
-    if (!this.moduleSystem) return;
-
-    const moduleSystem = this.moduleSystem;
-    // MAJOR FIX: The require function must be an ivm.Callback to be executed in the host.
-    // It also needs to be bound to the correct context.
-    // Since we are returning a plain object for injection, we must return the function itself.
-    // The actual ivm.Callback wrapping will happen in IsoBox.run.
-    const require_fn = (moduleName: string, fromPath: string = '/') => { // CRITICAL FIX: Added fromPath argument
-      // CRITICAL: This function is executed on the host, but the moduleSystem.require
-      // needs to know the context of the call (which module is requiring another).
-      // The `fromPath` argument is passed from the sandbox's `require` implementation.
-      return moduleSystem.require(moduleName, fromPath);
-    };
-
-    // The function is passed as a regular function here, and IsoBox.run will wrap it in ivm.Callback.
-    context._globals.require = require_fn;
-  }
-
-  private async injectSandbox(context: Record<string, any>): Promise<void> {
-    for (const [key, value] of Object.entries(this.sandbox)) {
-      try {
-        context._globals[key] = JSON.parse(JSON.stringify(value));
-      } catch {
-        // Fallback for non-serializable?
-        context._globals[key] = String(value);
+      private async injectRequire(context: Record<string, any>): Promise<void> {
+        if (!this.moduleSystem) return;
+    
+        const moduleSystem = this.moduleSystem;
+        // The function is passed as a regular function here, and IsoBox.run will wrap it in ivm.Callback.
+        // The `fromPath` argument is passed from the sandbox's `require` implementation.
+        const require_fn = (moduleName: string, fromPath: string = '/') => {
+          return moduleSystem.require(moduleName, fromPath);
+        };
+    
+        context._globals.require = require_fn;
       }
-    }
-  }
+
+      private async injectSandbox(context: Record<string, any>): Promise<void> {
+        for (const [key, value] of Object.entries(this.sandbox)) {
+          // MAJOR FIX: Allow non-serializable values to be passed directly.
+          // IsoBox.run will handle the ivm.Callback wrapping for functions.
+          // Simple objects will be copied by ivm.
+          context._globals[key] = value;
+        }
+      }
 
   validateContext(context: Record<string, any>): void {
     const required = [
