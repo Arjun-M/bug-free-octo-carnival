@@ -195,9 +195,11 @@ export class ResourceMonitor {
     let externalMemory = 0;
 
     try {
-      // Get CPU time (in microseconds, convert to milliseconds)
-      const cpuTimeUs = (isolate as any).cpuTime || 0;
-      cpuTime = cpuTimeUs / 1000;
+          // Get CPU time (in nanoseconds, convert to milliseconds)
+          // CRITICAL FIX: isolated-vm exposes cpuTime in nanoseconds as BigInt
+          const cpuTimeNs = (isolate as any).cpuTime || 0n;
+          const val = typeof cpuTimeNs === 'bigint' ? Number(cpuTimeNs) : (Number(cpuTimeNs) || 0);
+          cpuTime = val / 1e6; // Convert ns to ms
 
       // Get heap statistics if available
       try {
