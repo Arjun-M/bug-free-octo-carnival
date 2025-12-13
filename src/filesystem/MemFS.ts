@@ -35,7 +35,7 @@ export class MemFS {
   private _currentSize: number = 0;
 
   constructor(options: MemFSOptions = {}) {
-    this._maxSize = options.maxSize ?? 128 * 1024 * 1024; // 128MB
+    this._maxSize = options.maxSize ?? 128 * 1024 * 1024;
     this._root = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR });
     this._watcher = new FSWatcher();
 
@@ -79,7 +79,7 @@ export class MemFS {
       let child: FileNode | undefined = current.getChild(segment);
 
       if (!child) {
-        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR }); // MINOR FIX: Set default directory permissions
+        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR });
         current.addChild(segment, child);
       }
 
@@ -92,23 +92,40 @@ export class MemFS {
       current = child;
     }
 
-        const filename = segments[segments.length - 1];
-        let fileNode: FileNode | undefined = current.getChild(filename);
-    
-        if (!fileNode) {
-          fileNode = new FileNode({ isDirectory: false });
-          current.addChild(filename, fileNode);
-          this._watcher.notify(normalized, 'create');
+    const filename = segments[segments.length - 1];
+    let fileNode: FileNode | undefined = current.getChild(filename);
+
+    if (!fileNode) {
+      fileNode = new FileNode({ isDirectory: false });
+      current.addChild(filename, fileNode);
+      this._watcher.notify(normalized, 'create');
+    }
+
+    // MAJOR FIX: Properly track size delta for quota enforcement
+    const oldSize = fileNode.content?.length ?? 0;
+    const sizeDelta = contentBuffer.length - oldSize;
+
+    // Check quota before updating (in case of overwrite)
+    if (sizeDelta > 0 && this._currentSize + sizeDelta > this._maxSize) {
+      throw new SandboxError(
+        `Quota exceeded`,
+        'QUOTA_EXCEEDED',
+        { 
+          path, 
+          size: contentBuffer.length, 
+          available: this._maxSize - this._currentSize,
+          delta: sizeDelta
         }
-    
-        const oldSize = fileNode.content?.length ?? 0;
+      );
+    }
+
     fileNode.content = contentBuffer;
     fileNode.metadata.updateModified();
     fileNode.metadata.updateSize(contentBuffer.length);
 
-    this._currentSize += contentBuffer.length - oldSize;
+    this._currentSize += sizeDelta;
 
-    logger.debug(`Wrote ${contentBuffer.length} bytes to ${normalized}`);
+    logger.debug(`Wrote ${contentBuffer.length} bytes to ${normalized} (delta: ${sizeDelta > 0 ? '+' : ''}${sizeDelta})`);
     this._watcher.notify(normalized, 'modify');
   }
 
@@ -162,25 +179,27 @@ export class MemFS {
     const segments = this.parsePath(normalized);
 
     let current = this._root;
-    for (const segment of segments) {
+    const createdPaths: string[] = [];
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
       let child: FileNode | undefined = current.getChild(segment);
 
       if (!child) {
-        const isLast = segments.indexOf(segment) === segments.length - 1;
-        if (!recursive && !isLast) {
-           throw new SandboxError(
+        if (!recursive && i < segments.length - 1) {
+          throw new SandboxError(
             `Parent directory missing: ${normalized}`,
             'PARENT_NOT_FOUND',
             { path }
           );
         }
 
-        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR }); // MINOR FIX: Set default directory permissions
+        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR });
         current.addChild(segment, child);
-        // MAJOR FIX: Notify watcher with the correct path.
-        // We use the loop index to correctly construct the path for the newly created directory.
-        const index = segments.indexOf(segment);
-        const createdPath = '/' + segments.slice(0, index + 1).join('/');
+        
+        // MAJOR FIX: Build path correctly using loop index
+        const createdPath = '/' + segments.slice(0, i + 1).join('/');
+        createdPaths.push(createdPath);
         this._watcher.notify(createdPath, 'create');
       } else if (!child.isDirectory) {
         throw new SandboxError(`Not a directory: ${segment}`, 'NOT_A_DIRECTORY', { path });
@@ -189,7 +208,9 @@ export class MemFS {
       current = child;
     }
 
-    logger.debug(`mkdir ${normalized}`);
+    if (createdPaths.length > 0) {
+      logger.debug(`mkdir created ${createdPaths.length} directories: ${createdPaths.join(', ')}`);
+    }
   }
 
   exists(path: string): boolean {
@@ -279,7 +300,7 @@ export class MemFS {
   }
 
   getTotalSize(): number {
-    return this._currentSize; // MINOR FIX: Use cached size
+    return this._currentSize;
   }
 
   private _calculateNodeSize(node: FileNode): number {
@@ -362,8 +383,7 @@ export class MemFS {
     return current;
   }
 
-  // Removed _buildPath and _findNodeName as they are inefficient and no longer needed
-  // after fixing the path construction in mkdir and write.
-  // The FileNode class should ideally store its own name for efficiency, but for now,
-  // we rely on path reconstruction from segments in the calling functions.
+  get children() {
+    return this._root.children;
+  }
 }
