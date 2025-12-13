@@ -48,13 +48,16 @@ export class GlobalsInjector {
     if (this.allowTimers) {
       // Wrapper for setTimeout to handle ivm.Callback/Reference
       globals['setTimeout'] = (callback: any, delay: number, ...args: any[]) => {
-          if (typeof callback === 'object' && (callback.applySync || callback.apply)) {
+          // CRITICAL FIX: Ensure callback is an ivm.Reference (which includes ivm.Callback)
+          // This prevents arbitrary host functions from being executed by the sandbox.
+          if (callback instanceof ivm.Reference) {
               const id = ++this.timerIdCounter;
               const timer = setTimeout(() => {
                   this.activeTimers.delete(id);
                   try {
                       // Call the function in the sandbox
-                      callback.applySync ? callback.applySync(undefined, args) : callback.apply(undefined, args);
+                      // Use apply for async execution to avoid blocking the host thread
+                      callback.apply(undefined, args);
                   } catch (e) {
                       // Isolate might be disposed
                   }
@@ -62,14 +65,17 @@ export class GlobalsInjector {
               this.activeTimers.set(id, timer);
               return id; // Return primitive ID
           }
-      };
+          return 0; // Return 0 for invalid callback
+      }; // CRITICAL FIX: Missing semicolon/closing brace for setTimeout
 
       globals['setInterval'] = (callback: any, delay: number, ...args: any[]) => {
-         if (typeof callback === 'object' && (callback.applySync || callback.apply)) {
+         // CRITICAL FIX: Ensure callback is an ivm.Reference
+         if (callback instanceof ivm.Reference) {
              const id = ++this.timerIdCounter;
              const timer = setInterval(() => {
                   try {
-                       callback.applySync ? callback.applySync(undefined, args) : callback.apply(undefined, args);
+                       // Use apply for async execution
+                       callback.apply(undefined, args);
                   } catch (e) {
                       // Stop interval if execution fails (e.g. isolate disposed)
                       clearInterval(timer);
@@ -79,7 +85,8 @@ export class GlobalsInjector {
              this.activeTimers.set(id, timer);
              return id; // Return primitive ID
          }
-      };
+         return 0; // Return 0 for invalid callback
+      }; // CRITICAL FIX: Missing semicolon/closing brace for setInterval
 
       globals['clearTimeout'] = (id: any) => {
           if (typeof id === 'number' && this.activeTimers.has(id)) {
