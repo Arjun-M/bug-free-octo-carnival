@@ -52,22 +52,21 @@ export class TimeoutManager {
    * @param timeoutMs Max runtime in ms
    * @param timeoutId Custom ID (optional)
    */
-  startTimeout(
-    isolate: Isolate,
-    timeoutMs: number,
-    timeoutId?: string
-  ): TimeoutHandle {
-    const id = timeoutId || `timeout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    if (this.timeouts.has(id)) {
-      throw new Error(`Timeout ${id} already exists`);
-    }
-
-    const startTime = Date.now();
-    let lastCpuTime = 0;
-
-    // Check every 10ms
-    const intervalId = setInterval(() => {
+      startTimeout(
+        isolate: Isolate,
+        timeoutMs: number,
+        timeoutId: string // CRITICAL FIX: timeoutId must be provided by the caller (ExecutionEngine)
+      ): TimeoutHandle {
+        const id = timeoutId;
+    
+        if (this.timeouts.has(id)) {
+          throw new Error(`Timeout ${id} already exists`);
+        }
+    
+        const startTime = Date.now();
+    
+        // Check every 10ms
+        const intervalId = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const cpuTimeMs = this.getCpuTimeMs(isolate);
       const handle = this.timeouts.get(id);
@@ -94,21 +93,19 @@ export class TimeoutManager {
         return;
       }
 
-      // 3. Heads up warning at 80%
-      const warningThreshold = timeoutMs * 0.8;
-      if (elapsed >= warningThreshold && !handle.warned) { // MINOR FIX: Check if warning was already sent
-        handle.warned = true; // Mark as warned
-        this.eventEmitter.emit('warning', {
-          id,
-          elapsed,
-          timeout: timeoutMs,
-          cpuTime: cpuTimeMs,
-          severity: 'high',
-        });
-      }
-
-      lastCpuTime = cpuTimeMs;
-    }, this.monitoringInterval);
+          // 3. Heads up warning at 80%
+          const warningThreshold = timeoutMs * 0.8;
+          if (elapsed >= warningThreshold && !handle.warned) { // MINOR FIX: Check if warning was already sent
+            handle.warned = true; // Mark as warned
+            this.eventEmitter.emit('warning', {
+              id,
+              elapsed,
+              timeout: timeoutMs,
+              cpuTime: cpuTimeMs,
+              severity: 'high',
+            });
+          }
+        }, this.monitoringInterval);
 
     const handle: TimeoutHandle = {
       intervalId,
