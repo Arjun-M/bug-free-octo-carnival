@@ -1,9 +1,14 @@
 /**
- * @fileoverview File metadata tracking (created, modified, accessed, size, permissions)
+ * @file src/filesystem/FileMetadata.ts
+ * @description File metadata tracking including timestamps, size, and permissions. Manages creation, modification, and access times for virtual filesystem entries.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Metadata for files and directories
+ * Metadata interface for files and directories.
+ *
+ * @interface IFileMetadata
  */
 export interface IFileMetadata {
   created: number;
@@ -14,7 +19,12 @@ export interface IFileMetadata {
 }
 
 /**
- * Manages file/directory metadata with timestamp tracking
+ * Manages file and directory metadata with automatic timestamp tracking.
+ *
+ * Tracks creation, modification, and access times along with file size and permissions.
+ * Provides convenience methods for updating timestamps during filesystem operations.
+ *
+ * @class FileMetadata
  */
 export class FileMetadata implements IFileMetadata {
   created: number;

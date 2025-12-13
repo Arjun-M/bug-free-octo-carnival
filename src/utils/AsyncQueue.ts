@@ -1,9 +1,12 @@
 /**
- * @fileoverview Async queue for managing concurrent operations
+ * @file src/utils/AsyncQueue.ts
+ * @description Async queue for managing concurrent operations with configurable concurrency
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Queue item
+ * Queue item internal structure
  */
 interface QueueItem<T> {
   fn: () => Promise<T>;
@@ -12,7 +15,29 @@ interface QueueItem<T> {
 }
 
 /**
- * Concurrent async operation queue
+ * @class AsyncQueue
+ * Concurrent async operation queue with configurable concurrency limit.
+ * Automatically manages execution of queued operations.
+ *
+ * @example
+ * ```typescript
+ * // Create queue with max 3 concurrent operations
+ * const queue = new AsyncQueue(3);
+ *
+ * // Add operations
+ * const results = await Promise.all([
+ *   queue.add(() => fetchData(1)),
+ *   queue.add(() => fetchData(2)),
+ *   queue.add(() => fetchData(3)),
+ *   queue.add(() => fetchData(4)),
+ *   queue.add(() => fetchData(5))
+ * ]);
+ *
+ * // Only 3 will run at a time
+ * console.log('Queue size:', queue.size());
+ * console.log('Active:', queue.getActive());
+ * console.log('Pending:', queue.pending());
+ * ```
  */
 export class AsyncQueue {
   private queue: QueueItem<any>[] = [];
@@ -21,7 +46,8 @@ export class AsyncQueue {
 
   /**
    * Create async queue
-   * @param concurrency Maximum concurrent operations
+   * @param concurrency - Maximum concurrent operations (default: 5)
+   * @throws {Error} If concurrency is less than 1
    */
   constructor(concurrency: number = 5) {
     if (concurrency < 1) {
@@ -32,8 +58,16 @@ export class AsyncQueue {
 
   /**
    * Add operation to queue
-   * @param fn Async function to execute
+   * @param fn - Async function to execute
    * @returns Promise resolving to function result
+   *
+   * @example
+   * ```typescript
+   * const result = await queue.add(async () => {
+   *   const data = await fetch('/api/data');
+   *   return data.json();
+   * });
+   * ```
    */
   async add<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -87,6 +121,7 @@ export class AsyncQueue {
 
   /**
    * Clear the queue
+   * Rejects all pending operations with 'Queue cleared' error
    */
   clear(): void {
     for (const item of this.queue) {

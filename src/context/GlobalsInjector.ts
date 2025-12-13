@@ -1,20 +1,33 @@
 /**
- * @fileoverview Global safe objects injector
- *
- * Injects only safe built-in globals into sandbox:
- * - Optional: setTimeout, setInterval, clearTimeout, clearInterval
- *
- * Does NOT inject (security):
- * - process, Buffer, require
- * - Function, eval, constructor access
- * - Node.js APIs (fs, path, http, etc.)
- * - Standard built-ins (Object, Array, etc.) as they are intrinsic to the isolate
+ * @file src/context/GlobalsInjector.ts
+ * @description Global safe objects injector for sandbox environments. Provides optional timer functions while blocking dangerous Node.js APIs and eval-like constructs for security.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import ivm from 'isolated-vm';
 
 /**
- * Inject safe global objects into sandbox context
+ * Injects safe global objects into sandbox contexts.
+ *
+ * Provides optional timer functions (setTimeout, setInterval) while explicitly
+ * blocking dangerous globals for security:
+ * - process, Buffer, require, module, exports
+ * - Function, eval, constructor access
+ * - Node.js APIs (fs, path, http, child_process, etc.)
+ *
+ * Standard JavaScript globals (Object, Array, etc.) are provided intrinsically
+ * by isolated-vm and are not injected by this class.
+ *
+ * @class GlobalsInjector
+ * @example
+ * ```typescript
+ * const injector = new GlobalsInjector(true); // Enable timers
+ * const globals = injector.getAllGlobals();
+ *
+ * // globals.setTimeout is available
+ * // globals.process is NOT available (blacklisted)
+ * ```
  */
 export class GlobalsInjector {
   private allowTimers: boolean;

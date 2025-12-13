@@ -1,11 +1,32 @@
 /**
- * @fileoverview Internal logging utility with level control
+ * @file src/utils/Logger.ts
+ * @description Internal logging utility with environment-based level control
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
 
 /**
- * Internal logger for IsoBox with environment-based level control
+ * @class Logger
+ * Internal logger for IsoBox with environment-based level control.
+ * Supports ISOBOX_LOG_LEVEL environment variable and DEBUG flag.
+ *
+ * @example
+ * ```typescript
+ * // Usage (logger is exported as singleton)
+ * logger.debug('Debug message');
+ * logger.info('Info message');
+ * logger.warn('Warning message');
+ * logger.error('Error message');
+ *
+ * // Change log level
+ * logger.setLevel('debug');
+ *
+ * // Environment variables
+ * // ISOBOX_LOG_LEVEL=debug node app.js
+ * // DEBUG=isobox node app.js
+ * ```
  */
 class Logger {
   private level: LogLevel = this.getInitialLevel();
@@ -55,8 +76,8 @@ class Logger {
 
   /**
    * Log debug message
-   * @param message Message to log
-   * @param args Additional arguments
+   * @param message - Message to log
+   * @param args - Additional arguments
    */
   debug(message: string, ...args: any[]): void {
     if (this.shouldLog('debug')) {
@@ -99,7 +120,7 @@ class Logger {
 
   /**
    * Set log level
-   * @param level New log level
+   * @param level - New log level
    */
   setLevel(level: LogLevel): void {
     this.level = level;

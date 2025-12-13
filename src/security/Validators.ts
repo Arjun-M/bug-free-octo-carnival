@@ -1,15 +1,56 @@
 /**
- * Validates inputs and checks for security risks in code.
+ * @file src/security/Validators.ts
+ * @description Input validation and security risk checking for code and configuration. Provides static methods for validating code syntax, module names, paths, options, and detecting suspicious patterns.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
 
+/**
+ * Validation result with success flag and error messages.
+ *
+ * @interface ValidationResult
+ */
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
 
+/**
+ * Static validation utilities for security checking.
+ *
+ * Provides methods to validate:
+ * - Code syntax and security patterns
+ * - Module names and paths
+ * - Configuration options (timeouts, memory limits)
+ * - Environment variables
+ * - Input sanitization
+ * - Suspicious code detection (obfuscation, eval usage)
+ *
+ * All methods are static and stateless for easy use across the codebase.
+ *
+ * @class Validators
+ * @example
+ * ```typescript
+ * const result = Validators.validateCode('const x = 1;');
+ * if (!result.valid) {
+ *   console.error('Invalid code:', result.errors);
+ * }
+ *
+ * const suspicious = Validators.checkSuspiciousCode(code);
+ * if (suspicious.length > 0) {
+ *   console.warn('Suspicious patterns:', suspicious);
+ * }
+ * ```
+ */
 export class Validators {
+  /**
+   * Validate code syntax and check for suspicious patterns.
+   *
+   * @param code - Source code to validate
+   * @returns ValidationResult with errors if any
+   */
   static validateCode(code: string): ValidationResult {
     const errors: string[] = [];
 
@@ -56,6 +97,12 @@ export class Validators {
     };
   }
 
+  /**
+   * Validate that a module name is safe and well-formed.
+   *
+   * @param name - Module name to validate
+   * @returns True if valid
+   */
   static validateModuleName(name: string): boolean {
     if (!name || typeof name !== 'string') return false;
     if (name.includes('..') || name.startsWith('/')) return false;
@@ -65,6 +112,12 @@ export class Validators {
            /^\.\/|^\.\.\//.test(name);
   }
 
+  /**
+   * Validate that a filesystem path is safe.
+   *
+   * @param path - Path to validate
+   * @returns True if valid
+   */
   static validatePath(path: string): boolean {
     if (!path || typeof path !== 'string') return false;
     if (path.includes('..')) return false;
@@ -72,6 +125,12 @@ export class Validators {
     return true;
   }
 
+  /**
+   * Validate execution options for security compliance.
+   *
+   * @param options - Options object to validate
+   * @throws {Error} If options are invalid
+   */
   static validateOptions(options: any): void {
     if (!options || typeof options !== 'object') return;
 
@@ -100,6 +159,12 @@ export class Validators {
     }
   }
 
+  /**
+   * Sanitize string input by removing null bytes and limiting length.
+   *
+   * @param input - Input string to sanitize
+   * @returns Sanitized string
+   */
   static sanitizeInput(input: string): string {
     if (!input || typeof input !== 'string') return '';
     let sanitized = input.replace(/\0/g, '');
@@ -109,12 +174,32 @@ export class Validators {
     return sanitized;
   }
 
+  /**
+   * Validate environment variable name and value.
+   *
+   * @param key - Variable name
+   * @param value - Variable value
+   * @returns True if valid
+   */
   static validateEnvVar(key: string, value: any): boolean {
     if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) return false;
     if (value !== null && value !== undefined && typeof value !== 'string') return false;
     return true;
   }
 
+  /**
+   * Check code for suspicious patterns indicating obfuscation or malicious intent.
+   *
+   * Detects:
+   * - Excessive String.fromCharCode (obfuscation)
+   * - Excessive unicode escapes
+   * - Direct eval usage
+   * - Dynamic function construction
+   * - Very long lines (possible obfuscation)
+   *
+   * @param code - Code to check
+   * @returns Array of detected suspicious pattern descriptions
+   */
   static checkSuspiciousCode(code: string): string[] {
     const reasons: string[] = [];
 

@@ -1,12 +1,8 @@
 /**
- * Configures the execution environment for an isolate.
- *
- * Sets up:
- * - Globals (Object, Array, etc.)
- * - Console redirection
- * - Virtual Filesystem ($fs)
- * - Environment variables ($env)
- * - Custom require()
+ * @file src/context/ContextBuilder.ts
+ * @description Configures the execution environment for an isolate by injecting globals, console, filesystem APIs, environment variables, and module loading capabilities. Orchestrates context setup for sandboxed code execution.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import type { IsoBoxOptions } from '../core/types.js';
@@ -18,6 +14,34 @@ import { MemFS } from '../filesystem/MemFS.js';
 import { ModuleSystem } from '../modules/ModuleSystem.js';
 import { logger } from '../utils/Logger.js';
 
+/**
+ * Builds execution contexts for isolated-vm with injected APIs and globals.
+ *
+ * Orchestrates the setup of:
+ * - Safe global objects (Object, Array, etc.)
+ * - Console redirection (log, error, warn)
+ * - Virtual filesystem access ($fs)
+ * - Environment variables ($env)
+ * - Module loading (require)
+ * - Custom sandbox objects
+ *
+ * The builder prepares a context definition object that can be transferred
+ * into an isolate's execution environment.
+ *
+ * @class ContextBuilder
+ * @example
+ * ```typescript
+ * const builder = new ContextBuilder({
+ *   console: { mode: 'redirect' },
+ *   filesystem: { enabled: true },
+ *   allowTimers: true,
+ *   memfs,
+ *   moduleSystem
+ * });
+ *
+ * const context = await builder.build('isolate-1');
+ * ```
+ */
 export class ContextBuilder {
   private globalsInjector: GlobalsInjector;
   private consoleHandler: ConsoleHandler;
@@ -63,9 +87,13 @@ export class ContextBuilder {
   }
 
   /**
-   * Prepare the context object.
-   * Note: This returns a plain object definition.
-   * The actual injection into isolated-vm Context happens elsewhere (e.g. ExecutionContext).
+   * Build a context definition object for an isolate.
+   *
+   * Assembles all configured APIs and globals into a plain object. The actual
+   * injection into isolated-vm Context happens elsewhere (e.g., ExecutionContext).
+   *
+   * @param isolateId - Unique identifier for the isolate
+   * @returns Context object with _globals containing all APIs
    */
   async build(isolateId: string): Promise<Record<string, any>> {
     const context: Record<string, any> = {
@@ -173,6 +201,12 @@ export class ContextBuilder {
     }
   }
 
+  /**
+   * Validate that a context has all required globals.
+   *
+   * @param context - Context object to validate
+   * @throws {SandboxError} MISSING_GLOBAL if required global is missing
+   */
   validateContext(context: Record<string, any>): void {
     const required = [
       'console',
@@ -191,14 +225,27 @@ export class ContextBuilder {
     }
   }
 
+  /**
+   * Get the console handler instance.
+   *
+   * @returns ConsoleHandler for managing console output
+   */
   getConsoleHandler(): ConsoleHandler {
     return this.consoleHandler;
   }
 
+  /**
+   * Get the environment handler instance.
+   *
+   * @returns EnvHandler for managing environment variables
+   */
   getEnvHandler(): EnvHandler {
     return this.envHandler;
   }
 
+  /**
+   * Clean up resources, particularly active timers.
+   */
   dispose(): void {
     if (this.globalsInjector) {
       this.globalsInjector.dispose();

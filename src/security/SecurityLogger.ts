@@ -1,12 +1,17 @@
 /**
- * @fileoverview Security event logging
+ * @file src/security/SecurityLogger.ts
+ * @description Security event logging for tracking violations, suspicious activity, and access patterns. Provides event-based monitoring of sandbox security with filtering and statistics.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { EventEmitter } from '../utils/EventEmitter.js';
 import { logger } from '../utils/Logger.js';
 
 /**
- * Security event
+ * Security event with severity and details.
+ *
+ * @interface SecurityEvent
  */
 export interface SecurityEvent {
   type: string;
@@ -17,7 +22,9 @@ export interface SecurityEvent {
 }
 
 /**
- * Security filter
+ * Filter criteria for querying security events.
+ *
+ * @interface SecurityFilter
  */
 export interface SecurityFilter {
   type?: string;
@@ -26,7 +33,30 @@ export interface SecurityFilter {
 }
 
 /**
- * Logs security events
+ * Logs and tracks security events for sandbox monitoring.
+ *
+ * Maintains a rolling buffer of up to 1000 security events with timestamps and
+ * severity levels. Provides event emission for real-time monitoring, filtering
+ * capabilities, and statistics aggregation.
+ *
+ * Event types include:
+ * - module_access: Authorized and unauthorized module loading attempts
+ * - file_access: Virtual filesystem operations
+ * - timeout: Execution timeout violations
+ * - quota_exceeded: Resource limit violations
+ * - suspicious_code: Potentially malicious code patterns
+ *
+ * @class SecurityLogger
+ * @example
+ * ```typescript
+ * const secLogger = new SecurityLogger();
+ * secLogger.on('security:critical', (event) => {
+ *   console.error('Critical security event:', event);
+ * });
+ *
+ * secLogger.logModuleAccess('fs', false);
+ * const stats = secLogger.getStats();
+ * ```
  */
 export class SecurityLogger {
   private events: SecurityEvent[] = [];

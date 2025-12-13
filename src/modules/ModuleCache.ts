@@ -1,9 +1,14 @@
 /**
- * @fileoverview Module cache with hit/miss tracking
+ * @file src/modules/ModuleCache.ts
+ * @description Module cache with hit/miss tracking for performance optimization. Stores loaded modules to avoid redundant filesystem reads and evaluations.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Cache statistics
+ * Cache performance statistics.
+ *
+ * @interface CacheStats
  */
 export interface CacheStats {
   size: number;
@@ -13,7 +18,24 @@ export interface CacheStats {
 }
 
 /**
- * Module cache for caching loaded modules
+ * Module cache for storing and retrieving loaded modules.
+ *
+ * Tracks cache hits and misses for performance monitoring. Each module is stored
+ * by its resolved path to prevent duplicate loading.
+ *
+ * @class ModuleCache
+ * @example
+ * ```typescript
+ * const cache = new ModuleCache();
+ * cache.set('/src/utils.js', { helper: () => {} });
+ *
+ * if (cache.has('/src/utils.js')) {
+ *   const module = cache.get('/src/utils.js');
+ * }
+ *
+ * const stats = cache.getStats();
+ * console.log(`Hit rate: ${stats.hitRate}%`);
+ * ```
  */
 export class ModuleCache {
   private cache: Map<string, any> = new Map();

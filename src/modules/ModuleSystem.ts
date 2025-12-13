@@ -1,11 +1,8 @@
 /**
- * Handles module resolution and loading.
- *
- * Supports:
- * - Whitelisted external modules
- * - Virtual filesystem files
- * - Circular dependency detection
- * - Mocks
+ * @file src/modules/ModuleSystem.ts
+ * @description Module resolution and loading system with support for whitelisted packages, virtual filesystem modules, circular dependency detection, and mocking. Provides a secure require() implementation for sandboxed code.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import type { RequireOptions } from '../core/types.js';
@@ -16,6 +13,33 @@ import { ImportResolver } from './ImportResolver.js';
 import { MemFS } from '../filesystem/MemFS.js';
 import { logger } from '../utils/Logger.js';
 
+/**
+ * Module resolution and loading system for sandboxed environments.
+ *
+ * Provides a secure require() implementation that:
+ * - Enforces module whitelisting for external packages
+ * - Loads modules from virtual filesystem
+ * - Detects and prevents circular dependencies
+ * - Supports module mocking for testing
+ * - Optionally allows built-in Node.js modules
+ *
+ * The system caches loaded modules and tracks loading state to detect cycles.
+ * All external module loading is disabled by default for security.
+ *
+ * @class ModuleSystem
+ * @example
+ * ```typescript
+ * const moduleSystem = new ModuleSystem({
+ *   whitelist: ['lodash'],
+ *   mocks: { 'fake-module': { value: 42 } },
+ *   allowBuiltins: true,
+ *   memfs
+ * });
+ *
+ * const lodash = moduleSystem.require('lodash', '/');
+ * const myModule = moduleSystem.require('./myModule', '/src/index.js');
+ * ```
+ */
 export class ModuleSystem {
   private whitelist: Set<string>;
   private mocks: Map<string, any>;
@@ -50,6 +74,20 @@ export class ModuleSystem {
     );
   }
 
+  /**
+   * Load and return a module.
+   *
+   * Resolves the module path, checks cache, detects circular dependencies, and loads
+   * from appropriate source (virtual filesystem, built-in, whitelisted, or mock).
+   *
+   * @param moduleName - Module specifier (e.g., 'lodash', './utils', '/src/file')
+   * @param fromPath - Path of the requiring module (default: '/')
+   * @returns Loaded module exports
+   * @throws {SandboxError} CIRCULAR_DEPENDENCY if circular dependency detected
+   * @throws {SandboxError} MODULE_NOT_ALLOWED if built-in module not allowed
+   * @throws {SandboxError} MODULE_NOT_WHITELISTED if external module not whitelisted
+   * @throws {SandboxError} MODULE_LOAD_ERROR if loading fails
+   */
   require(moduleName: string, fromPath: string = '/'): any {
     logger.debug(`require('${moduleName}') from ${fromPath}`);
 
@@ -109,6 +147,14 @@ export class ModuleSystem {
     }
   }
 
+  /**
+   * Check if a module is whitelisted for loading.
+   *
+   * Supports glob-style patterns (* and ? wildcards).
+   *
+   * @param moduleName - Module name to check
+   * @returns True if module is whitelisted
+   */
   isWhitelisted(moduleName: string): boolean {
     for (const pattern of this.whitelist) {
       if (this.matchPattern(moduleName, pattern)) {
@@ -118,18 +164,47 @@ export class ModuleSystem {
     return false;
   }
 
+  /**
+   * Check if a module has a mock registered.
+   *
+   * @param moduleName - Module name to check
+   * @returns True if module is mocked
+   */
   isMocked(moduleName: string): boolean {
     return this.mocks.has(moduleName);
   }
 
+  /**
+   * Get the mock implementation for a module.
+   *
+   * @param moduleName - Module name
+   * @returns Mock implementation
+   */
   getMock(moduleName: string): any {
     return this.mocks.get(moduleName);
   }
 
+  /**
+   * Check if a module name is a built-in Node.js module.
+   *
+   * @param moduleName - Module name to check
+   * @returns True if built-in module
+   */
   private isBuiltin(moduleName: string): boolean {
     return this.builtins.has(moduleName);
   }
 
+  /**
+   * Load a module from the virtual filesystem.
+   *
+   * Currently not fully implemented as it requires VM-side code execution.
+   * Virtual modules must be executed within the isolate context.
+   *
+   * @param path - Absolute path to module in virtual filesystem
+   * @returns Module exports
+   * @throws {SandboxError} MODULE_LOAD_UNIMPLEMENTED - feature not yet implemented
+   * @throws {SandboxError} MODULE_LOAD_ERROR if loading fails
+   */
   private loadVirtual(path: string): any {
     try {
       const code = this.memfs.read(path).toString();
@@ -159,6 +234,15 @@ export class ModuleSystem {
     }
   }
 
+  /**
+   * Load a built-in Node.js module polyfill.
+   *
+   * Provides simplified implementations of common Node.js modules for sandbox use.
+   * Not full implementations - only safe subsets.
+   *
+   * @param moduleName - Built-in module name (e.g., 'path', 'buffer')
+   * @returns Module polyfill implementation
+   */
   private loadBuiltin(moduleName: string): any {
     const builtins: Record<string, any> = {
       path: {
@@ -188,6 +272,16 @@ export class ModuleSystem {
     return builtins[moduleName] || {};
   }
 
+  /**
+   * Load an external module from host environment.
+   *
+   * SECURITY NOTE: Currently disabled to prevent sandbox escape. External modules
+   * should be bundled into virtual filesystem or provided as mocks.
+   *
+   * @param moduleName - External module name
+   * @returns Module exports
+   * @throws {SandboxError} EXTERNAL_MODULES_DISABLED - feature disabled for security
+   */
   private loadExternal(moduleName: string): any {
     // SECURITY NOTE: Loading from host node_modules is disabled to prevent sandbox escape.
     // If external modules are needed, they should be:
@@ -207,6 +301,15 @@ export class ModuleSystem {
     );
   }
 
+  /**
+   * Check if a name matches a glob-style pattern.
+   *
+   * Supports * (any characters) and ? (single character) wildcards.
+   *
+   * @param name - Name to test
+   * @param pattern - Pattern with wildcards
+   * @returns True if name matches pattern
+   */
   private matchPattern(name: string, pattern: string): boolean {
     if (name === pattern) return true;
     const regexPattern = pattern
@@ -216,23 +319,46 @@ export class ModuleSystem {
     return new RegExp(`^${regexPattern}$`).test(name);
   }
 
+  /**
+   * Clear module cache and circular dependency tracking.
+   */
   clear(): void {
     this.cache.clear();
     this.circularDeps.clear();
   }
 
+  /**
+   * Get module cache statistics.
+   *
+   * @returns Cache stats including size, hits, misses, and hit rate
+   */
   getCacheStats(): any {
     return this.cache.getStats();
   }
 
+  /**
+   * Get list of whitelisted module patterns.
+   *
+   * @returns Array of whitelist patterns
+   */
   getWhitelist(): string[] {
     return Array.from(this.whitelist);
   }
 
+  /**
+   * Add a module to the whitelist.
+   *
+   * @param moduleName - Module name or pattern to whitelist
+   */
   addToWhitelist(moduleName: string): void {
     this.whitelist.add(moduleName);
   }
 
+  /**
+   * Remove a module from the whitelist.
+   *
+   * @param moduleName - Module name or pattern to remove
+   */
   removeFromWhitelist(moduleName: string): void {
     this.whitelist.delete(moduleName);
   }

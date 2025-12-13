@@ -1,11 +1,16 @@
 /**
- * @fileoverview Error sanitizer to prevent information leakage
+ * @file src/security/ErrorSanitizer.ts
+ * @description Error sanitizer to prevent information leakage from host environment. Removes sensitive paths, internal stack frames, and provides safe error reporting for sandboxed code.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { SandboxError } from '../core/types.js';
 
 /**
- * Sanitized error for safe exposure to external consumers
+ * Sanitized error safe for exposure to external consumers.
+ *
+ * @interface SanitizedError
  */
 export interface SanitizedError {
   message: string;
@@ -17,7 +22,29 @@ export interface SanitizedError {
 }
 
 /**
- * Sanitizes errors to prevent information leakage from host environment
+ * Sanitizes errors to prevent information leakage from host environment.
+ *
+ * Removes sensitive information including:
+ * - Absolute file paths and file:// URLs
+ * - node_modules references
+ * - Node.js internal module paths
+ * - Host directory structures
+ *
+ * Provides helpful hints for common error types and extracts code context
+ * around error locations when source code is available.
+ *
+ * @class ErrorSanitizer
+ * @example
+ * ```typescript
+ * const sanitizer = new ErrorSanitizer();
+ * try {
+ *   // Code that might error
+ * } catch (error) {
+ *   const safe = sanitizer.sanitize(error, sourceCode);
+ *   console.log(safe.message); // Safe error message
+ *   console.log(safe.codeContext); // Code snippet around error
+ * }
+ * ```
  */
 export class ErrorSanitizer {
   /**

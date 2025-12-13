@@ -1,9 +1,24 @@
 /**
- * @fileoverview Session state storage
+ * @file src/session/StateStorage.ts
+ * @description In-memory session state storage with key-value persistence for maintaining session data across executions. Provides CRUD operations for session state management.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * In-memory session state storage
+ * StateStorage - In-memory session state storage.
+ *
+ * Maintains session state as nested Maps (sessionId -> key-value pairs),
+ * providing isolated storage for each session with efficient access patterns.
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const storage = new StateStorage();
+ * storage.set('session-1', 'username', 'alice');
+ * const name = storage.get('session-1', 'username'); // 'alice'
+ * storage.delete('session-1');
+ * ```
  */
 export class StateStorage {
   private storage: Map<string, Map<string, any>> = new Map();

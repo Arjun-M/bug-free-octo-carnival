@@ -1,5 +1,8 @@
 /**
- * Helper to load multiple files into MemFS for a project.
+ * @file src/project/ProjectLoader.ts
+ * @description Helper to load multiple files into MemFS for a project with validation and statistics
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import type { ProjectOptions, ProjectFile } from '../core/types.js';
@@ -7,6 +10,9 @@ import { SandboxError } from '../core/types.js';
 import { MemFS } from '../filesystem/MemFS.js';
 import { logger } from '../utils/Logger.js';
 
+/**
+ * Prepared project information after initial loading
+ */
 export interface PreparedProject {
   entrypoint: string;
   files: ProjectFile[];
@@ -15,6 +21,9 @@ export interface PreparedProject {
   hasTypeScript: boolean;
 }
 
+/**
+ * Statistical information about a project's files
+ */
 export interface ProjectStats {
   fileCount: number;
   totalSize: number;
@@ -23,7 +32,41 @@ export interface ProjectStats {
   hasJavaScript: boolean;
 }
 
+/**
+ * @class ProjectLoader
+ * Handles loading, validation, and preparation of multi-file projects for execution.
+ * Provides utilities for analyzing project structure and writing files to virtual filesystem.
+ *
+ * @example
+ * ```typescript
+ * // Load a project
+ * const prepared = ProjectLoader.loadProject({
+ *   entrypoint: '/index.js',
+ *   files: [
+ *     { path: '/index.js', code: 'console.log("Hello")', language: 'javascript' }
+ *   ]
+ * });
+ *
+ * // Get project statistics
+ * const stats = ProjectLoader.getProjectStats(project);
+ * console.log(`Project has ${stats.fileCount} files`);
+ * ```
+ */
 export class ProjectLoader {
+  /**
+   * Load and prepare a project for execution
+   * @param project - Project options containing files and entrypoint
+   * @returns Prepared project with metadata
+   * @throws {SandboxError} If project validation fails
+   *
+   * @example
+   * ```typescript
+   * const prepared = ProjectLoader.loadProject({
+   *   entrypoint: '/main.ts',
+   *   files: [{ path: '/main.ts', code: 'const x = 1;', language: 'typescript' }]
+   * });
+   * ```
+   */
   static loadProject(project: ProjectOptions): PreparedProject {
     this.validateProject(project);
 
@@ -47,6 +90,19 @@ export class ProjectLoader {
     };
   }
 
+  /**
+   * Validate project structure and files
+   * @param project - Project to validate
+   * @throws {SandboxError} If validation fails (empty project, missing entrypoint, duplicate files, etc.)
+   *
+   * @example
+   * ```typescript
+   * ProjectLoader.validateProject({
+   *   entrypoint: '/index.js',
+   *   files: [{ path: '/index.js', code: 'console.log("test")' }]
+   * });
+   * ```
+   */
   static validateProject(project: ProjectOptions): void {
     if (!project.files || project.files.length === 0) {
       throw new SandboxError(
@@ -105,6 +161,19 @@ export class ProjectLoader {
     );
   }
 
+  /**
+   * Write all project files to the virtual filesystem
+   * Creates necessary directories and writes file contents
+   * @param project - Project containing files to write
+   * @param memfs - Virtual filesystem instance
+   * @throws {SandboxError} If file write fails
+   *
+   * @example
+   * ```typescript
+   * const memfs = new MemFS();
+   * ProjectLoader.writeProjectFiles(project, memfs);
+   * ```
+   */
   static writeProjectFiles(project: ProjectOptions, memfs: MemFS): void {
     const directories = new Set<string>();
 
@@ -147,6 +216,18 @@ export class ProjectLoader {
     }
   }
 
+  /**
+   * Get statistical information about a project
+   * @param project - Project to analyze
+   * @param _memfs - Unused parameter for signature compatibility
+   * @returns Statistics including file count, sizes, and language distribution
+   *
+   * @example
+   * ```typescript
+   * const stats = ProjectLoader.getProjectStats(project);
+   * console.log(`Largest file: ${stats.largestFile.name} (${stats.largestFile.size} bytes)`);
+   * ```
+   */
   static getProjectStats(
     project: ProjectOptions,
     _memfs?: MemFS // Unused param, marked with underscore or remove. Keeping underscore for signature compat if needed.
@@ -184,6 +265,17 @@ export class ProjectLoader {
     };
   }
 
+  /**
+   * Build a map of file paths to their source code
+   * @param files - Array of project files
+   * @returns Map with file paths as keys and source code as values
+   *
+   * @example
+   * ```typescript
+   * const tree = ProjectLoader.buildFileTree(project.files);
+   * const indexCode = tree.get('/index.js');
+   * ```
+   */
   static buildFileTree(files: ProjectFile[]): Map<string, string> {
     const tree = new Map<string, string>();
 

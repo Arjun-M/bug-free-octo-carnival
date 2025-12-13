@@ -1,9 +1,14 @@
 /**
- * @fileoverview Permission utilities and constants
+ * @file src/filesystem/Permissions.ts
+ * @description Unix-style permission utilities and constants for virtual filesystem. Provides permission checking, parsing, and formatting functions.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Unix-style permission constants
+ * Unix-style permission constants for files and directories.
+ *
+ * @enum {number}
  */
 export const PERMISSIONS = {
   READ: 0o444,

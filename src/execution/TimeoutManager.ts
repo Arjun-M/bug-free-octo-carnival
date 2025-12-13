@@ -1,5 +1,8 @@
 /**
- * Strict timeout enforcement with infinite loop detection.
+ * @file src/execution/TimeoutManager.ts
+ * @description Strict timeout enforcement with infinite loop detection for isolated-vm execution contexts. Monitors isolate execution and terminates when time limits or suspicious CPU patterns are detected.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { EventEmitter } from 'events';
@@ -7,7 +10,9 @@ import type { Isolate } from 'isolated-vm';
 import { logger } from '../utils/Logger.js';
 
 /**
- * Handle for an active timeout.
+ * Handle for an active timeout monitoring session.
+ *
+ * @interface TimeoutHandle
  */
 export interface TimeoutHandle {
   /** Interval ID for the monitoring loop. */
@@ -29,9 +34,27 @@ export interface TimeoutHandle {
 /**
  * Manages strict execution timeouts with infinite loop detection.
  *
- * Enforces limits by:
- * 1. Hard timeout: Kills isolate immediately when time is up.
- * 2. Infinite loop check: If CPU time is too close to wall time (>95%), it's likely stuck.
+ * Enforces execution limits through two mechanisms:
+ * 1. Hard timeout: Terminates isolate immediately when execution time exceeds limit
+ * 2. Infinite loop detection: Identifies suspicious CPU patterns (>95% usage) indicating stuck code
+ *
+ * The manager monitors isolates at regular intervals, tracks CPU time vs wall time,
+ * and emits warnings when approaching timeout thresholds.
+ *
+ * @class TimeoutManager
+ * @example
+ * ```typescript
+ * const manager = new TimeoutManager();
+ * const handle = manager.startTimeout(isolate, 5000, 'execution-1');
+ *
+ * manager.on('warning', (event) => {
+ *   console.log(`Execution nearing timeout: ${event.elapsed}ms`);
+ * });
+ *
+ * manager.on('timeout', (event) => {
+ *   console.log(`Execution terminated: ${event.reason}`);
+ * });
+ * ```
  */
 export class TimeoutManager {
   private timeouts: Map<string, TimeoutHandle> = new Map();
@@ -46,11 +69,23 @@ export class TimeoutManager {
   }
 
   /**
-   * Start watching an isolate. Kills it if it runs too long.
+   * Start monitoring an isolate for timeout violations.
    *
-   * @param isolate Isolate to monitor
-   * @param timeoutMs Max runtime in ms
-   * @param timeoutId Custom ID (optional)
+   * Creates a monitoring interval that checks execution time and CPU usage every 10ms.
+   * Terminates the isolate if execution exceeds the timeout or infinite loop is detected.
+   * Emits a warning event at 80% of timeout threshold.
+   *
+   * @param isolate - Isolated-vm isolate to monitor
+   * @param timeoutMs - Maximum execution time in milliseconds
+   * @param timeoutId - Unique identifier for this timeout session
+   * @returns TimeoutHandle containing monitoring metadata
+   * @throws {Error} If timeout ID already exists
+   * @example
+   * ```typescript
+   * const handle = manager.startTimeout(isolate, 5000, 'exec-123');
+   * // ... code executes ...
+   * manager.clearTimeout('exec-123');
+   * ```
    */
       startTimeout(
         isolate: Isolate,
@@ -121,7 +156,14 @@ export class TimeoutManager {
   }
 
   /**
-   * Kill an isolate immediately.
+   * Immediately terminate an isolate and clean up monitoring resources.
+   *
+   * Disposes the isolate, clears the monitoring interval, and emits a timeout event
+   * with termination details.
+   *
+   * @param isolate - Isolate to terminate
+   * @param timeoutId - Timeout session identifier
+   * @param reason - Reason for termination ('timeout' or 'infinite-loop')
    */
   private killIsolate(isolate: Isolate, timeoutId: string, reason: string): void {
     const handle = this.timeouts.get(timeoutId);
@@ -148,7 +190,12 @@ export class TimeoutManager {
   }
 
   /**
-   * Stop watching an isolate.
+   * Stop monitoring an isolate and remove the timeout session.
+   *
+   * Clears the monitoring interval and removes the timeout handle from tracking.
+   * Safe to call multiple times or with non-existent IDs.
+   *
+   * @param timeoutId - Timeout session identifier to clear
    */
   clearTimeout(timeoutId: string): void {
     const handle = this.timeouts.get(timeoutId);
@@ -160,7 +207,13 @@ export class TimeoutManager {
   }
 
   /**
-   * Get CPU time in ms. safely.
+   * Safely retrieve CPU time from an isolate.
+   *
+   * Extracts CPU time from isolated-vm's internal cpuTime property (in nanoseconds)
+   * and converts to milliseconds. Returns 0 if unable to read CPU time.
+   *
+   * @param isolate - Isolate to measure
+   * @returns CPU time in milliseconds
    */
   private getCpuTimeMs(isolate: Isolate): number {
     try {
@@ -173,14 +226,32 @@ export class TimeoutManager {
     }
   }
 
+  /**
+   * Register an event listener.
+   *
+   * @param event - Event name ('timeout', 'warning')
+   * @param handler - Event handler function
+   */
   on(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.on(event, handler);
   }
 
+  /**
+   * Remove an event listener.
+   *
+   * @param event - Event name
+   * @param handler - Event handler to remove
+   */
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
   }
 
+  /**
+   * Clear all active timeout monitoring sessions.
+   *
+   * Stops monitoring all isolates and clears all timeout handles.
+   * Useful for cleanup during shutdown.
+   */
   clearAll(): void {
     for (const id of this.timeouts.keys()) {
       this.clearTimeout(id);

@@ -1,9 +1,14 @@
 /**
- * @fileoverview Pool statistics and tracking
+ * @file src/isolate/PoolStats.ts
+ * @description Pool statistics tracking and aggregation for isolate pool monitoring. Provides metrics on pool utilization, execution performance, and error rates with rolling averages.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Pool statistics
+ * Pool statistics snapshot.
+ *
+ * @interface
  */
 export interface PoolStats {
   created: number;
@@ -17,7 +22,19 @@ export interface PoolStats {
 }
 
 /**
- * Track pool statistics
+ * PoolStatsTracker - Tracks and aggregates isolate pool statistics.
+ *
+ * Maintains execution metrics with rolling averages and provides snapshots
+ * of pool health and performance for monitoring and optimization.
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const tracker = new PoolStatsTracker();
+ * tracker.recordExecution(150); // Record 150ms execution
+ * tracker.setActive(5);
+ * const stats = tracker.getStats(); // Get current statistics
+ * ```
  */
 export class PoolStatsTracker {
   private stats: PoolStats = {

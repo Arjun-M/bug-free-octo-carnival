@@ -1,9 +1,23 @@
 /**
- * @fileoverview Environment variables handler
+ * @file src/context/EnvHandler.ts
+ * @description Environment variables handler for sandboxed code. Provides isolated environment variable storage and access without exposing host process.env.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Provides access to environment variables in sandbox
+ * Manages environment variables for sandboxed code.
+ *
+ * Provides an isolated environment variable store separate from host process.env.
+ * Supports standard operations like get, set, has, and delete.
+ *
+ * @class EnvHandler
+ * @example
+ * ```typescript
+ * const env = new EnvHandler({ NODE_ENV: 'production' });
+ * env.set('API_KEY', 'secret');
+ * console.log(env.get('NODE_ENV')); // 'production'
+ * ```
  */
 export class EnvHandler {
   private env: Record<string, string>;

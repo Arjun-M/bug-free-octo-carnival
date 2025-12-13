@@ -1,5 +1,8 @@
 /**
- * @fileoverview Project builder for multi-file execution
+ * @file src/project/ProjectBuilder.ts
+ * @description Project builder for multi-file execution with virtual filesystem construction
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { MemFS } from '../filesystem/MemFS.js';
@@ -34,13 +37,41 @@ export interface ProjectStats {
 }
 
 /**
- * Builds virtual filesystem from project files
+ * @class ProjectBuilder
+ * Builds virtual filesystem from project files and provides utilities for project analysis.
+ * Handles directory structure creation, file validation, dependency extraction, and project statistics.
+ *
+ * @example
+ * ```typescript
+ * // Build virtual filesystem
+ * const memfs = new MemFS();
+ * ProjectBuilder.buildVirtualFS(files, memfs);
+ *
+ * // Validate files
+ * const errors = ProjectBuilder.validateFiles(files);
+ * if (errors.length > 0) {
+ *   console.error('Validation failed:', errors);
+ * }
+ *
+ * // Get dependencies
+ * const deps = ProjectBuilder.getDependencies(code);
+ * console.log('Imports:', deps);
+ * ```
  */
 export class ProjectBuilder {
   /**
    * Build virtual filesystem from files
-   * @param files Project files
-   * @param memfs MemFS instance
+   * @param files - Project files to write to filesystem
+   * @param memfs - MemFS instance to write to
+   * @throws {Error} If file write fails
+   *
+   * @example
+   * ```typescript
+   * const memfs = new MemFS();
+   * ProjectBuilder.buildVirtualFS([
+   *   { path: '/index.js', code: 'console.log("test")' }
+   * ], memfs);
+   * ```
    */
   static buildVirtualFS(files: ProjectFile[], memfs: MemFS): void {
     logger.debug(`Building virtual FS with ${files.length} files`);
@@ -281,8 +312,16 @@ export class ProjectBuilder {
 
   /**
    * Get dependencies (imports/requires) from a file
-   * @param code File code
-   * @returns Array of module names
+   * Extracts import and require statements from JavaScript/TypeScript code
+   * @param code - File source code
+   * @returns Array of module names/specifiers
+   *
+   * @example
+   * ```typescript
+   * const code = "import fs from 'fs'; const path = require('path');";
+   * const deps = ProjectBuilder.getDependencies(code);
+   * // Returns: ['fs', 'path']
+   * ```
    */
   static getDependencies(code: string): string[] {
     const deps = new Set<string>();
@@ -311,8 +350,16 @@ export class ProjectBuilder {
 
   /**
    * Get all project dependencies
-   * @param files Project files
-   * @returns Map of file path → dependencies
+   * @param files - Project files to analyze
+   * @returns Map of file path to array of dependencies
+   *
+   * @example
+   * ```typescript
+   * const deps = ProjectBuilder.getAllDependencies(files);
+   * for (const [path, imports] of deps) {
+   *   console.log(`${path} imports:`, imports);
+   * }
+   * ```
    */
   static getAllDependencies(files: ProjectFile[]): Map<string, string[]> {
     const allDeps = new Map<string, string[]>();

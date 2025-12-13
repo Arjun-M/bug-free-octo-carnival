@@ -1,5 +1,8 @@
 /**
- * IsoBox - A secure, isolated sandbox for untrusted code.
+ * @file src/index.ts
+ * @description Main entry point for IsoBox - a production-grade JavaScript/TypeScript sandbox with strict timeouts, memory filesystem, and multi-file project support. Exports all public APIs, classes, types, and utilities for secure code execution in isolated environments.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 export { IsoBox } from './core/IsoBox.js';
