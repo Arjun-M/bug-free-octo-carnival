@@ -112,13 +112,12 @@ export class ExecutionEngine {
       );
 
       // Run
-      const result = await this.createTimeoutPromise(
-        script.run(context, {
-          timeout: options.timeout,
-          promise: true,
-        }),
-        options.timeout
-      );
+      // CRITICAL FIX: Rely on the ivm built-in graceful timeout (options.timeout)
+      // The external createTimeoutPromise is redundant and can mask the ivm timeout error.
+      const result = await script.run(context, {
+        timeout: options.timeout,
+        promise: true,
+      });
 
       const duration = timer.stop();
 
@@ -178,14 +177,17 @@ export class ExecutionEngine {
    */
   async executeScript<T = any>(
     compiled: CompiledScript,
+    isolate: Isolate, // CRITICAL FIX: Added isolate to signature
     context: Context,
     options: ExecuteOptions
   ): Promise<ExecutionResult<T>> {
     const code = compiled.getSource();
-    // Assuming context has isolate reference or we need to change signature
-    // For now using cast as per existing pattern
-    return this.execute(code, (context as any).isolate, context, options);
+    // The isolate must be passed explicitly to executeScript, as a Context does not
+    // necessarily hold a reference to its parent Isolate.
+    return this.execute(code, isolate, context, options);
   }
+
+
 
   /**
    * Promise with a timeout.
@@ -197,9 +199,11 @@ export class ExecutionEngine {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        setTimeout(() => {
-          reject(new TimeoutError('Execution timeout exceeded', timeoutMs));
+        const timer = setTimeout(() => {
+          reject(new TimeoutError('Compilation timeout exceeded', timeoutMs));
         }, timeoutMs);
+        // CRITICAL FIX: Clear the timer when the promise resolves/rejects
+        promise.finally(() => clearTimeout(timer));
       }),
     ]);
   }
