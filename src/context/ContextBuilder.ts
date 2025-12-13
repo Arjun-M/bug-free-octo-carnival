@@ -110,7 +110,7 @@ export class ContextBuilder {
     context._console_log = (...args: any[]) => handler.handleOutput('log', args);
     context._console_error = (...args: any[]) => handler.handleOutput('error', args);
     context._console_warn = (...args: any[]) => handler.handleOutput('warn', args);
-    context._console_info = (...args: any[]) => handler.handleOutput('log', args); // Map info to log
+    context._console_info = (...args: any[]) => handler.handleOutput('info', args); // MINOR FIX: Map info to info, not log
     context._console_debug = (...args: any[]) => handler.handleOutput('debug', args);
 
     const console_obj = {
@@ -134,8 +134,9 @@ export class ContextBuilder {
     const memfs = this.memfs;
 
     const fs_obj = {
-      write: (path: string, content: string) => memfs.write(path, content),
-      read: (path: string) => memfs.read(path).toString(),
+      // MAJOR FIX: Removed .toString() to allow binary data transfer (Buffer is copied by ivm)
+      write: (path: string, content: string | Buffer) => memfs.write(path, content),
+      read: (path: string) => memfs.read(path),
       exists: (path: string) => memfs.exists(path),
       readdir: (path: string) => memfs.readdir(path),
       mkdir: (path: string, recursive?: boolean) => memfs.mkdir(path, recursive),
@@ -158,10 +159,18 @@ export class ContextBuilder {
     if (!this.moduleSystem) return;
 
     const moduleSystem = this.moduleSystem;
-    const require_fn = (moduleName: string) => {
-      return moduleSystem.require(moduleName, context.isolateId);
+    // MAJOR FIX: The require function must be an ivm.Callback to be executed in the host.
+    // It also needs to be bound to the correct context.
+    // Since we are returning a plain object for injection, we must return the function itself.
+    // The actual ivm.Callback wrapping will happen in IsoBox.run.
+    const require_fn = (moduleName: string, fromPath: string = '/') => { // CRITICAL FIX: Added fromPath argument
+      // CRITICAL: This function is executed on the host, but the moduleSystem.require
+      // needs to know the context of the call (which module is requiring another).
+      // The `fromPath` argument is passed from the sandbox's `require` implementation.
+      return moduleSystem.require(moduleName, fromPath);
     };
 
+    // The function is passed as a regular function here, and IsoBox.run will wrap it in ivm.Callback.
     context._globals.require = require_fn;
   }
 
