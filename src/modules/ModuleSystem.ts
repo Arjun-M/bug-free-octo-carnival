@@ -166,7 +166,9 @@ export class ModuleSystem {
       util: {
         inspect: (obj: any) => JSON.stringify(obj),
       },
-      buffer: { Buffer },
+      // MAJOR FIX: Buffer must be exposed as the Buffer class itself, not an object containing it.
+      // This allows users to call `new Buffer(...)` or `Buffer.from(...)`.
+      buffer: Buffer,
       stream: {
         Readable: class {},
         Writable: class {},
