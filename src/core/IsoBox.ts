@@ -138,14 +138,14 @@ export class IsoBox {
       timestamp: Date.now(),
     });
 
-        let isolate: ivm.Isolate | undefined;
-        let builder: ContextBuilder | undefined;
-        let execResult: ExecutionResult<T> | undefined;
-        const callbacks: ivm.Callback[] = []; // CRITICAL FIX: Initialize callbacks array outside try block
+    let isolate: ivm.Isolate | undefined;
+    let builder: ContextBuilder | undefined;
+    let result: T | undefined; 
+    let execResult: ExecutionResult<T> | undefined;
+    const callbacks: ivm.Callback[] = []; // CRITICAL FIX: Initialize callbacks array outside try block
 
     try {
-      let result: T;
-
+      
       if (this.isolatePool) {
         // Pool should handle context initialization internally or we need to pass builder
         // For Phase 0, we assume pool handles basic execution or is limited.
