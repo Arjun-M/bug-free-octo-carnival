@@ -61,11 +61,8 @@ export class ImportResolver {
     // Extract directory from fromPath
     const fromDir = this.dirname(fromPath);
 
-    // Normalize the specifier
-    const normalized = this.normalizePath(specifier);
-
-    // Resolve against fromDir
-    const resolved = this.joinPaths(fromDir, normalized);
+        // Resolve against fromDir
+        const resolved = this.joinPaths(fromDir, specifier);
 
     // Try exact match first
     if (this.memfs.exists(resolved)) {
@@ -208,12 +205,4 @@ export class ImportResolver {
     return '/' + resolvedParts.join('/');
   }
 
-  /**
-   * Normalize path segments
-   * @param path Path to normalize
-   * @returns Normalized path
-   */
-  private normalizePath(path: string): string {
-    return path;
-  }
 }
