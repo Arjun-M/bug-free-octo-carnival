@@ -12,11 +12,12 @@ import type {
 } from './types.js';
 import { SandboxError } from './types.js';
 import { CompiledScript } from './CompiledScript.js';
-import { TypeScriptCompiler } from '../project/TypeScriptCompiler.js'; // MAJOR FIX: Import compiler
+import { TypeScriptCompiler } from '../project/TypeScriptCompiler.js'
 import type { Language } from './types.js'; // MAJOR FIX: Import Language type
 import ivm from 'isolated-vm';
 import { IsolateManager } from '../isolate/IsolateManager.js';
 import { IsolatePool } from '../isolate/IsolatePool.js';
+import type { ExecutionResult } from '../execution/ExecutionEngine.js';
 import { ExecutionEngine } from '../execution/ExecutionEngine.js';
 import { ExecutionContext } from '../execution/ExecutionContext.js';
 import { ContextBuilder } from '../context/ContextBuilder.js';
@@ -307,23 +308,29 @@ export class IsoBox {
           }
         }
       }
-    
-      async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> { // MAJOR FIX: Make async and accept language
+  
+  async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> {
     this.ensureNotDisposed();
-
     if (!code?.trim()) {
       throw new SandboxError('Code cannot be empty', 'EMPTY_CODE');
     }
 
     let compiledCode = code;
-    if (language === 'typescript') {
-      // MAJOR FIX: Use the TypeScript compiler to transpile the code
-      compiledCode = await TypeScriptCompiler.transpile(code);
+    if (language === 'typescript' || language === 'ts') {
+      // CRITICAL FIX: Create an instance and use transpile method, handle async properly
+      try {
+        const compiler = new TypeScriptCompiler();
+        compiledCode = compiler.transpile(code); // transpile is synchronous, no await needed
+      } catch (error) {
+        throw new SandboxError(
+          `TypeScript compilation failed: ${error instanceof Error ? error.message : String(error)}`,
+          'TS_COMPILATION_ERROR'
+        );
+      }
     }
-
     return new CompiledScript(code, compiledCode, language);
   }
-
+    
   async runProject<T = any>(project: ProjectOptions): Promise<T> {
     this.ensureNotDisposed();
 
