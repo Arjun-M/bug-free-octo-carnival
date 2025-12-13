@@ -319,8 +319,7 @@ export class IsoBox {
     if (language === 'typescript' || language === 'ts') {
       // CRITICAL FIX: Create an instance and use transpile method, handle async properly
       try {
-        const compiler = new TypeScriptCompiler();
-        compiledCode = compiler.transpile(code); // transpile is synchronous, no await needed
+        compiledCode = TypeScriptCompiler.transpile(code) // transpile is synchronous, no await needed
       } catch (error) {
         throw new SandboxError(
           `TypeScript compilation failed: ${error instanceof Error ? error.message : String(error)}`,
