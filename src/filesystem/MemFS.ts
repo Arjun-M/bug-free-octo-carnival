@@ -92,16 +92,16 @@ export class MemFS {
       current = child;
     }
 
-    const filename = segments[segments.length - 1];
-    let fileNode: FileNode | undefined = current.getChild(filename);
-
-    if (!fileNode) {
-      fileNode = new FileNode({ isDirectory: false });
-      current.addChild(filename, fileNode);
-      this._watcher.notify(normalized, 'create');
-    }
-
-    const oldSize = fileNode.content?.length ?? 0;
+        const filename = segments[segments.length - 1];
+        let fileNode: FileNode | undefined = current.getChild(filename);
+    
+        if (!fileNode) {
+          fileNode = new FileNode({ isDirectory: false });
+          current.addChild(filename, fileNode);
+          this._watcher.notify(normalized, 'create');
+        }
+    
+        const oldSize = fileNode.content?.length ?? 0;
     fileNode.content = contentBuffer;
     fileNode.metadata.updateModified();
     fileNode.metadata.updateSize(contentBuffer.length);
@@ -177,7 +177,10 @@ export class MemFS {
 
         child = new FileNode({ isDirectory: true });
         current.addChild(segment, child);
-        this._watcher.notify(this._buildPath(current, segment), 'create');
+        // MAJOR FIX: Use the correct path for notification.
+        // The path of the newly created directory is simply the normalized path up to this segment.
+        const createdPath = '/' + segments.slice(0, segments.indexOf(segment) + 1).join('/');
+        this._watcher.notify(createdPath, 'create');
       } else if (!child.isDirectory) {
         throw new SandboxError(`Not a directory: ${segment}`, 'NOT_A_DIRECTORY', { path });
       }
@@ -227,7 +230,10 @@ export class MemFS {
       );
     }
 
-    this._currentSize -= node.getSize();
+    // MAJOR FIX: Recursively calculate size to subtract for directories
+    const sizeToDelete = this._calculateNodeSize(node);
+    this._currentSize -= sizeToDelete;
+
     parent.removeChild(filename);
     this._watcher.notify(normalized, 'delete');
   }
@@ -272,7 +278,17 @@ export class MemFS {
   }
 
   getTotalSize(): number {
-    return this._root.getSize();
+    return this._currentSize; // MINOR FIX: Use cached size
+  }
+
+  private _calculateNodeSize(node: FileNode): number {
+    let size = node.getSize();
+    if (node.isDirectory) {
+      for (const child of node.children.values()) {
+        size += this._calculateNodeSize(child);
+      }
+    }
+    return size;
   }
 
   getQuotaUsage(): QuotaUsage {
@@ -345,27 +361,8 @@ export class MemFS {
     return current;
   }
 
-  private _buildPath(parent: FileNode, childName: string): string {
-    if (parent === this._root) return '/' + childName;
-
-    const parts: string[] = [childName];
-    let current = parent;
-
-    while (current.parent && current.parent !== this._root) {
-      const parentName = this._findNodeName(current.parent, current);
-      if (parentName) parts.unshift(parentName);
-      current = current.parent;
-    }
-
-    return '/' + parts.join('/');
-  }
-
-  private _findNodeName(parent: FileNode, child: FileNode): string | undefined {
-    for (const [name, node] of parent.children) {
-      if (node === child) {
-        return name;
-      }
-    }
-    return undefined;
-  }
+  // Removed _buildPath and _findNodeName as they are inefficient and no longer needed
+  // after fixing the path construction in mkdir and write.
+  // The FileNode class should ideally store its own name for efficiency, but for now,
+  // we rely on path reconstruction from segments in the calling functions.
 }
