@@ -79,7 +79,7 @@ export class MemFS {
       let child: FileNode | undefined = current.getChild(segment);
 
       if (!child) {
-        child = new FileNode({ isDirectory: true });
+        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR }); // MINOR FIX: Set default directory permissions
         current.addChild(segment, child);
       }
 
@@ -175,11 +175,12 @@ export class MemFS {
           );
         }
 
-        child = new FileNode({ isDirectory: true });
+        child = new FileNode({ isDirectory: true, permissions: PERMISSIONS.DEFAULT_DIR }); // MINOR FIX: Set default directory permissions
         current.addChild(segment, child);
-        // MAJOR FIX: Use the correct path for notification.
-        // The path of the newly created directory is simply the normalized path up to this segment.
-        const createdPath = '/' + segments.slice(0, segments.indexOf(segment) + 1).join('/');
+        // MAJOR FIX: Notify watcher with the correct path.
+        // We use the loop index to correctly construct the path for the newly created directory.
+        const index = segments.indexOf(segment);
+        const createdPath = '/' + segments.slice(0, index + 1).join('/');
         this._watcher.notify(createdPath, 'create');
       } else if (!child.isDirectory) {
         throw new SandboxError(`Not a directory: ${segment}`, 'NOT_A_DIRECTORY', { path });
