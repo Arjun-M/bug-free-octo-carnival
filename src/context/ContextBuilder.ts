@@ -98,19 +98,16 @@ export class ContextBuilder {
 
   private async injectGlobals(context: Record<string, any>): Promise<void> {
     const globals = this.globalsInjector.getAllGlobals();
-    // Do not inject 'global' with circular reference as it breaks isolated-vm transfer
-    // globals['global'] = globals;
     context._globals = globals;
   }
 
   private async injectConsole(context: Record<string, any>): Promise<void> {
     const handler = this.consoleHandler;
 
-    // These functions will need to be marshalled to the VM
     context._console_log = (...args: any[]) => handler.handleOutput('log', args);
     context._console_error = (...args: any[]) => handler.handleOutput('error', args);
     context._console_warn = (...args: any[]) => handler.handleOutput('warn', args);
-    context._console_info = (...args: any[]) => handler.handleOutput('info', args); // MINOR FIX: Map info to info, not log
+    context._console_info = (...args: any[]) => handler.handleOutput('info', args); // MINOR FIX: Map info to info
     context._console_debug = (...args: any[]) => handler.handleOutput('debug', args);
 
     const console_obj = {
@@ -155,27 +152,26 @@ export class ContextBuilder {
     context._globals.$fs = fs_obj;
   }
 
-      private async injectRequire(context: Record<string, any>): Promise<void> {
-        if (!this.moduleSystem) return;
-    
-        const moduleSystem = this.moduleSystem;
-        // The function is passed as a regular function here, and IsoBox.run will wrap it in ivm.Callback.
-        // The `fromPath` argument is passed from the sandbox's `require` implementation.
-        const require_fn = (moduleName: string, fromPath: string = '/') => {
-          return moduleSystem.require(moduleName, fromPath);
-        };
-    
-        context._globals.require = require_fn;
-      }
+  private async injectRequire(context: Record<string, any>): Promise<void> {
+    if (!this.moduleSystem) return;
 
-      private async injectSandbox(context: Record<string, any>): Promise<void> {
-        for (const [key, value] of Object.entries(this.sandbox)) {
-          // MAJOR FIX: Allow non-serializable values to be passed directly.
-          // IsoBox.run will handle the ivm.Callback wrapping for functions.
-          // Simple objects will be copied by ivm.
-          context._globals[key] = value;
-        }
-      }
+    const moduleSystem = this.moduleSystem;
+    // MAJOR FIX: The require function should only take moduleName in sandbox context.
+    // The fromPath should default to '/' since modules are loaded from MemFS root.
+    const require_fn = (moduleName: string) => {
+      return moduleSystem.require(moduleName, '/');
+    };
+
+    context._globals.require = require_fn;
+  }
+
+  private async injectSandbox(context: Record<string, any>): Promise<void> {
+    for (const [key, value] of Object.entries(this.sandbox)) {
+      // MAJOR FIX: Allow non-serializable values to be passed directly.
+      // IsoBox.run will handle the ivm.Callback wrapping for functions.
+      context._globals[key] = value;
+    }
+  }
 
   validateContext(context: Record<string, any>): void {
     const required = [
@@ -188,9 +184,7 @@ export class ContextBuilder {
 
     for (const key of required) {
       if (!(key in globals)) {
-        // $fs and $env might be disabled by config, so only warn or check config
         if (key === '$fs' && this.options.filesystem?.enabled === false) continue;
-        // if (key === '$env') ...
 
         throw new SandboxError(`Missing global: ${key}`, 'MISSING_GLOBAL');
       }
