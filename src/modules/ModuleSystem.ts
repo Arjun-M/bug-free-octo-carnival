@@ -57,7 +57,7 @@ export class ModuleSystem {
       return this.mocks.get(moduleName);
     }
 
-        // CRITICAL FIX: The cache key must be the resolved path, not the original moduleName.
+    // CRITICAL FIX: The cache key must be the resolved path, not the original moduleName.
     // This prevents cache collisions between modules with the same name in different directories.
     const resolvedPath = this.importResolver.resolve(moduleName, fromPath);
 
@@ -132,21 +132,25 @@ export class ModuleSystem {
 
   private loadVirtual(path: string): any {
     try {
-      // CRITICAL FIX: This is a placeholder. The actual code execution must happen inside the VM.
-      // The current implementation is a major security risk as it would execute code on the host.
-      // For this analysis, we assume the file content would be read and passed to the VM for execution.
       const code = this.memfs.read(path).toString();
 
-      // In a real implementation, you would do something like:
-      // const result = vm.run(code, { context: moduleContext });
-      // return module.exports;
-
-      // For now, we return a placeholder to signify the module was "loaded".
-      // This is a BLOCKER for actual functionality but allows the analysis to proceed.
-      logger.warn(`[SECURITY] Host-side execution of virtual module is disabled. Returning mock for: ${path}`);
-      return { exports: {} }; // Return a mock module object
+      // CRITICAL: Virtual module loading requires code execution within the VM context.
+      // The ModuleSystem cannot execute code by itself (host security risk).
+      // 
+      // Solution options:
+      // 1. Pass an executor function from IsoBox that runs code in the VM
+      // 2. Use a callback-based approach for module instantiation
+      // 3. Store code and defer execution to the VM (lazy loading)
+      //
+      // For now, throw an explicit error indicating this isn't supported:
+      throw new SandboxError(
+        `Virtual module loading not yet implemented. Module path: ${path}`,
+        'MODULE_LOAD_UNIMPLEMENTED',
+        { path, message: 'Virtual modules require VM-side code execution' }
+      );
 
     } catch (error) {
+      if (error instanceof SandboxError) throw error;
       throw new SandboxError(
         `Load failed: ${path}`,
         'MODULE_LOAD_ERROR',
@@ -159,7 +163,7 @@ export class ModuleSystem {
     const builtins: Record<string, any> = {
       path: {
         join: (...parts: string[]) => parts.join('/'),
-        dirname: (p: string) => p.split('/').slice(0, -1).join('/'),
+        dirname: (p: string) => p.split('/').slice(0, -1).join('/') || '/',
         basename: (p: string) => p.split('/').pop() || '',
         resolve: (...parts: string[]) => '/' + parts.join('/'),
       },
@@ -170,9 +174,10 @@ export class ModuleSystem {
       util: {
         inspect: (obj: any) => JSON.stringify(obj),
       },
-      // MAJOR FIX: Buffer must be exposed as the Buffer class itself, not an object containing it.
-      // This allows users to call `new Buffer(...)` or `Buffer.from(...)`.
-      buffer: Buffer,
+      // MAJOR FIX: Buffer must be exported as a property of the module object
+      buffer: {
+        Buffer: Buffer, // Now accessible as require('buffer').Buffer or const { Buffer } = require('buffer')
+      },
       stream: {
         Readable: class {},
         Writable: class {},
@@ -184,15 +189,21 @@ export class ModuleSystem {
   }
 
   private loadExternal(moduleName: string): any {
-    // CRITICAL FIX: This is a placeholder. Loading external modules from the host's node_modules
-    // is a major security vulnerability (sandbox escape). A proper implementation would need to
-    // use a securely bundled or pre-approved set of modules within the virtual file system.
-    logger.warn(`[SECURITY] Host-side external module loading is disabled. Denying: ${moduleName}`);
+    // SECURITY NOTE: Loading from host node_modules is disabled to prevent sandbox escape.
+    // If external modules are needed, they should be:
+    // 1. Bundled into the virtual filesystem before execution
+    // 2. Loaded as whitelisted packages from a secure source
+    // 3. Mocked via the ModuleSystem.mocks configuration
+    
+    logger.error(`External module requested but disabled: ${moduleName}`);
 
     throw new SandboxError(
-      `External module loading is disabled for security: ${moduleName}`,
-      'MODULE_NOT_ALLOWED',
-      { module: moduleName }
+      `External modules disabled for security. Use mocks or whitelisted packages instead: ${moduleName}`,
+      'EXTERNAL_MODULES_DISABLED',
+      { 
+        module: moduleName,
+        suggestion: 'Use options.mocks to provide module implementations or bundle modules into the virtual filesystem'
+      }
     );
   }
 
