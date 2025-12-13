@@ -12,12 +12,12 @@ import type {
 } from './types.js';
 import { SandboxError } from './types.js';
 import { CompiledScript } from './CompiledScript.js';
-import { TypeScriptCompiler } from '../project/TypeScriptCompiler.js'
-import type { Language } from './types.js'; // MAJOR FIX: Import Language type
+import { TypeScriptCompiler } from '../project/TypeScriptCompiler.js';
+import type { Language } from './types.js';
+import type { ExecutionResult } from '../execution/ExecutionEngine.js';
 import ivm from 'isolated-vm';
 import { IsolateManager } from '../isolate/IsolateManager.js';
 import { IsolatePool } from '../isolate/IsolatePool.js';
-import type { ExecutionResult } from '../execution/ExecutionEngine.js';
 import { ExecutionEngine } from '../execution/ExecutionEngine.js';
 import { ExecutionContext } from '../execution/ExecutionContext.js';
 import { ContextBuilder } from '../context/ContextBuilder.js';
@@ -57,7 +57,6 @@ export class IsoBox {
 
     this.isolateManager = new IsolateManager();
     this.executionEngine = new ExecutionEngine();
-    // Inject 'this' into SessionManager
     this.sessionManager = new SessionManager(this, options.sessionCleanupInterval);
     this.memfs = new MemFS({
       maxSize: this.fsMaxSize,
@@ -138,188 +137,184 @@ export class IsoBox {
       timestamp: Date.now(),
     });
 
+    // CRITICAL FIX: Hoist all variables outside try block for proper cleanup in finally
     let isolate: ivm.Isolate | undefined;
     let builder: ContextBuilder | undefined;
-    let result: T | undefined; 
     let execResult: ExecutionResult<T> | undefined;
-    const callbacks: ivm.Callback[] = []; // CRITICAL FIX: Initialize callbacks array outside try block
+    let result: T | undefined;
+    const callbacks: ivm.Callback[] = []; // Initialize callbacks array before try
 
     try {
-      
       if (this.isolatePool) {
-        // Pool should handle context initialization internally or we need to pass builder
-        // For Phase 0, we assume pool handles basic execution or is limited.
-        // NOTE: Pool execution should return ExecutionResult<T> for metrics to work correctly.
-        // Assuming isolatePool.execute returns T, not ExecutionResult<T> based on the original code.
-        // This is a potential bug in the pool implementation, but for now, we'll assume it returns T.
         result = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
-        // Since we don't have metrics from the pool, we'll use placeholders for now.
         execResult = { value: result, duration: opts.timeout ?? this.timeout, cpuTime: 0 };
-          } else {
-            const { isolate: newIsolate } = this.isolateManager.create({
-                memoryLimit: this.memoryLimit
-            });
-            isolate = newIsolate; // CRITICAL FIX: Assign to hoisted variable
-    
-
-        // Initialize context with globals, fs, etc.
-        // ExecutionEngine.setupExecutionContext creates a raw context.
-        // We need to use ContextBuilder to prepare the environment object,
-        // but currently ContextBuilder returns a plain object, not injecting into Context directly.
-        // We need to bridge them.
+      } else {
+        const { isolate: newIsolate } = this.isolateManager.create({
+          memoryLimit: this.memoryLimit,
+        });
+        isolate = newIsolate;
 
         const context = isolate.createContextSync();
         const global = context.global;
 
-            // Use ContextBuilder to get safe globals
-        builder = new ContextBuilder({ // CRITICAL FIX: Use hoisted variable
-            ...this.options,
-            memfs: this.memfs,
-            moduleSystem: this.moduleSystem,
-            allowTimers: this.options.allowTimers ?? true // Default to true for backward compatibility
+        builder = new ContextBuilder({
+          ...this.options,
+          memfs: this.memfs,
+          moduleSystem: this.moduleSystem,
+          allowTimers: this.options.allowTimers ?? true,
         });
-
-        // Add session-specific sandbox if provided in run options
-        if ((opts as any).sandbox) {
-            // Merge with existing sandbox options if any
-            // Note: ContextBuilder constructor takes options.sandbox.
-            // We might need to rebuild context or manually inject.
-            // For now, let's just stick to the base builder.
-        }
 
         const contextObj = await builder.build(opts.filename || 'script');
 
-        // Inject into VM context
-        // Iterate over contextObj and set on global
-        // This is a simplified injection.
-        // ContextBuilder returns { _globals: {...}, ... }
-        // We need to inject _globals content into global.
-
+        // MAJOR FIX: Proper context injection with correct type handling
         if (contextObj._globals) {
-          // We iterate over the globals and inject them into the sandbox context.
-          // Complex objects with functions (like console or fs) need special handling
-          // because they can't be deep-copied directly if they contain functions.
           for (const key of Object.keys(contextObj._globals)) {
-             const value = contextObj._globals[key];
-             try {
-               if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                 const hasFunctions = Object.values(value).some(v => typeof v === 'function');
+            const value = contextObj._globals[key];
+            try {
+              if (typeof value === 'function') {
+                // Functions must be wrapped in ivm.Callback
+                const callback = new ivm.Callback(value);
+                callbacks.push(callback);
+                global.setSync(key, callback);
+              } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                // For objects, check if they have methods
+                const hasNonFunctions = Object.values(value).some(v => typeof v !== 'function');
+                const hasFunctions = Object.values(value).some(v => typeof v === 'function');
 
-                 if (hasFunctions) {
-                    // Create an empty object in the sandbox to populate
-                    const ref = context.evalClosureSync(`return {}`, [], { result: { reference: true } });
-                    global.setSync(key, ref);
+                if (hasFunctions) {
+                  // Create empty ref and populate with mixed content
+                  const ref = context.evalClosureSync('() => ({})', [], { result: { reference: true } });
+                  global.setSync(key, ref);
 
-                    // Populate properties (1-level deep supported for now)
-                    for (const prop of Object.keys(value)) {
-                        const propVal = value[prop];
-                        if (typeof propVal === 'function') {
-                            const callback = new ivm.Callback(propVal);
-                            callbacks.push(callback); // CRITICAL FIX: Store callback
-                            ref.setSync(prop, callback);
-                        } else {
-                            ref.setSync(prop, propVal, { copy: true });
+                  for (const prop of Object.keys(value)) {
+                    const propVal = value[prop];
+                    try {
+                      if (typeof propVal === 'function') {
+                        const callback = new ivm.Callback(propVal);
+                        callbacks.push(callback);
+                        ref.setSync(prop, callback);
+                      } else if (typeof propVal === 'object' && propVal !== null) {
+                        try {
+                          ref.setSync(prop, propVal, { copy: true });
+                        } catch (e) {
+                          ref.setSync(prop, String(propVal), { copy: true });
                         }
+                      } else {
+                        ref.setSync(prop, propVal, { copy: true });
+                      }
+                    } catch (e) {
+                      logger.warn(`Failed to inject property '${key}.${prop}': ${e instanceof Error ? e.message : String(e)}`);
                     }
-                 } else {
-                    // Pure data object
-                    global.setSync(key, value, { copy: true });
-                 }
-               } else if (typeof value === 'function') {
-                   const callback = new ivm.Callback(value);
-                   callbacks.push(callback); // CRITICAL FIX: Store callback
-                   global.setSync(key, callback);
-               } else {
-                   // Primitives or simple arrays
-                   global.setSync(key, value, { copy: true });
-               }
-             } catch (e) {
-                 logger.warn(`Failed to inject global '${key}': ${e instanceof Error ? e.message : String(e)}`);
-             }
+                  }
+                } else if (hasNonFunctions) {
+                  // Pure data object
+                  global.setSync(key, value, { copy: true });
+                }
+              } else if (Array.isArray(value)) {
+                global.setSync(key, value, { copy: true });
+              } else {
+                // Primitives
+                global.setSync(key, value, { copy: true });
+              }
+            } catch (e) {
+              logger.warn(`Failed to inject global '${key}': ${e instanceof Error ? e.message : String(e)}`);
+            }
           }
         }
 
-        // Execute
         execResult = await this.executionEngine.execute<T>(code, isolate, context, {
-            timeout,
-            cpuTimeLimit: this.cpuTimeLimit,
-            memoryLimit: this.memoryLimit,
-            strictTimeout: this.strictTimeout,
-            filename: opts.filename,
-            code
+          timeout,
+          cpuTimeLimit: this.cpuTimeLimit,
+          memoryLimit: this.memoryLimit,
+          strictTimeout: this.strictTimeout,
+          filename: opts.filename,
+          code,
         });
 
         if (execResult.error) {
-            throw execResult.error;
+          throw execResult.error;
         }
 
         result = execResult.value;
       }
 
-          // CRITICAL FIX: Check if execResult is defined before accessing its properties
-          if (execResult) {
-            this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.memoryUsed ?? 0);
-    
-            this.emit('execution', {
-              type: 'complete',
-              id: executionId,
-              duration: execResult.duration, // Use actual duration
-              timestamp: Date.now(),
-            });
-          }
-    
-          return result;
-        } catch (error) {
-          this.globalMetrics.errorCount++;
-    
-          let errorObj: Error;
-          if (error instanceof Error) {
-            errorObj = error;
-          } else if (typeof error === 'object' && error !== null && 'message' in error) {
-             // Handle SanitizedError or similar objects
-             const msg = (error as any).message;
-             errorObj = new Error(msg);
-             if ((error as any).stack) errorObj.stack = (error as any).stack;
-             // Copy other properties if needed
-             if ((error as any).code) (errorObj as any).code = (error as any).code;
-          } else {
-            errorObj = new Error(String(error));
-          }
-    
-          this.emit('execution', {
-            type: 'error',
-            id: executionId,
-            error: errorObj.message,
-            timestamp: Date.now(),
-          });
-    
-          throw errorObj;
-        } finally {
-          // CRITICAL FIX: Ensure isolate and builder are disposed to prevent memory leaks
-          // Dispose of all ivm.Callback objects to prevent memory leaks
-          callbacks.forEach(cb => cb.dispose());
-    
-          if (isolate) {
-            // CRITICAL FIX: Use IsolateManager's disposeIsolate to ensure proper untracking
-            this.isolateManager.disposeIsolate(isolate);
-          }
-          if (builder) {
-            builder.dispose();
-          }
+      // CRITICAL FIX: Check if execResult is defined before accessing properties
+      if (execResult) {
+        this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.memoryUsed ?? 0);
+
+        this.emit('execution', {
+          type: 'complete',
+          id: executionId,
+          duration: execResult.duration,
+          timestamp: Date.now(),
+        });
+      }
+
+      return result as T;
+    } catch (error) {
+      this.globalMetrics.errorCount++;
+
+      let errorObj: Error;
+      if (error instanceof Error) {
+        errorObj = error;
+      } else if (typeof error === 'object' && error !== null && 'message' in error) {
+        const msg = (error as any).message;
+        errorObj = new Error(msg);
+        if ((error as any).stack) errorObj.stack = (error as any).stack;
+        if ((error as any).code) (errorObj as any).code = (error as any).code;
+      } else {
+        errorObj = new Error(String(error));
+      }
+
+      this.emit('execution', {
+        type: 'error',
+        id: executionId,
+        error: errorObj.message,
+        timestamp: Date.now(),
+      });
+
+      throw errorObj;
+    } finally {
+      // CRITICAL FIX: Proper cleanup of all resources
+      // Dispose of all ivm.Callback objects to prevent memory leaks
+      for (const callback of callbacks) {
+        try {
+          callback.dispose();
+        } catch (err) {
+          // Ignore errors if already disposed
         }
       }
-  
+      callbacks.length = 0;
+
+      if (isolate) {
+        try {
+          this.isolateManager.disposeIsolate(isolate);
+        } catch (err) {
+          logger.warn(`Failed to dispose isolate: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      if (builder) {
+        try {
+          builder.dispose();
+        } catch (err) {
+          // Ignore errors
+        }
+      }
+    }
+  }
+
   async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> {
     this.ensureNotDisposed();
+
     if (!code?.trim()) {
       throw new SandboxError('Code cannot be empty', 'EMPTY_CODE');
     }
 
     let compiledCode = code;
     if (language === 'typescript' || language === 'ts') {
-      // CRITICAL FIX: Create an instance and use transpile method, handle async properly
       try {
-        compiledCode = TypeScriptCompiler.transpile(code) // transpile is synchronous, no await needed
+        compiledCode = TypeScriptCompiler.transpile(code);
       } catch (error) {
         throw new SandboxError(
           `TypeScript compilation failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -327,9 +322,10 @@ export class IsoBox {
         );
       }
     }
+
     return new CompiledScript(code, compiledCode, language);
   }
-    
+
   async runProject<T = any>(project: ProjectOptions): Promise<T> {
     this.ensureNotDisposed();
 
@@ -483,4 +479,4 @@ export class IsoBox {
   getIsolateManager(): IsolateManager { return this.isolateManager; }
   getIsolatePool(): IsolatePool | null { return this.isolatePool; }
   getSessionManager(): SessionManager { return this.sessionManager; }
-}
+  }
