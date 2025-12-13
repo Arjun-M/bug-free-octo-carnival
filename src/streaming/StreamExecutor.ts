@@ -1,5 +1,8 @@
 /**
- * @fileoverview Streaming execution with yield support
+ * @file src/streaming/StreamExecutor.ts
+ * @description Streaming execution with yield support for async generators
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
@@ -9,14 +12,39 @@ import {
 } from './GeneratorHandler.js';
 
 /**
- * Executes code with streaming results
+ * @class StreamExecutor
+ * Executes code with streaming results, supporting async generators and iterables.
+ * Handles timeout enforcement and converts sync iterators to async.
+ *
+ * @example
+ * ```typescript
+ * // Create executor
+ * const executor = new StreamExecutor({ timeout: 5000 });
+ *
+ * // Execute code that yields values
+ * const code = `
+ *   async function* generate() {
+ *     for (let i = 0; i < 5; i++) {
+ *       yield i;
+ *       await new Promise(r => setTimeout(r, 100));
+ *     }
+ *   }
+ *   return generate();
+ * `;
+ *
+ * // Consume stream
+ * for await (const value of executor.execute(code, context)) {
+ *   console.log('Received:', value);
+ * }
+ * ```
  */
 export class StreamExecutor {
   private defaultTimeout: number;
 
   /**
    * Create stream executor
-   * @param options Configuration
+   * @param options - Configuration options
+   * @param options.timeout - Default timeout in milliseconds (default: 30000)
    */
   constructor(options: {
     timeout?: number;
@@ -26,10 +54,19 @@ export class StreamExecutor {
 
   /**
    * Execute code as async generator
-   * @param code Code to execute
-   * @param context Execution context
-   * @param options Run options
+   * @param code - Code to execute
+   * @param context - Execution context with globals
+   * @param options - Execution options
+   * @param options.timeout - Timeout in milliseconds (overrides default)
+   * @param options.yielding - Enable yielding behavior (default: true)
    * @returns Async iterable of results
+   *
+   * @example
+   * ```typescript
+   * for await (const item of executor.execute(code, ctx, { timeout: 10000 })) {
+   *   console.log(item);
+   * }
+   * ```
    */
   async *execute(
     code: string,
@@ -159,7 +196,7 @@ export class StreamExecutor {
 
   /**
    * Set default timeout
-   * @param timeout Timeout in milliseconds
+   * @param timeout - Timeout in milliseconds
    */
   setDefaultTimeout(timeout: number): void {
     this.defaultTimeout = timeout;

@@ -1,11 +1,29 @@
 /**
- * Manages the lifecycle of isolated-vm instances.
+ * @file src/isolate/IsolateManager.ts
+ * @description Manages the lifecycle of isolated-vm instances including creation, tracking, and disposal. Provides centralized isolate management with automatic ID generation and cleanup.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import ivm from 'isolated-vm';
 
 /**
- * Handles creation, tracking, and disposal of isolates.
+ * Manages the lifecycle of isolated-vm instances.
+ *
+ * Provides centralized management for creating, tracking, and disposing isolates.
+ * Automatically generates unique IDs for each isolate and maintains a registry
+ * for lookup and cleanup operations.
+ *
+ * @class IsolateManager
+ * @example
+ * ```typescript
+ * const manager = new IsolateManager();
+ * const { id, isolate } = manager.create({ memoryLimit: 128 * 1024 * 1024 });
+ *
+ * // Use isolate...
+ *
+ * manager.dispose(id); // Clean up when done
+ * ```
  */
 export class IsolateManager {
   private isolates: Map<string, ivm.Isolate> = new Map();

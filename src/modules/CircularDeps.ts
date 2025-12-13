@@ -1,9 +1,28 @@
 /**
- * @fileoverview Circular dependency detection
+ * @file src/modules/CircularDeps.ts
+ * @description Circular dependency detection for module loading. Tracks currently loading modules and identifies circular references to prevent infinite loops.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Tracks circular dependencies during module loading
+ * Tracks circular dependencies during module loading.
+ *
+ * Maintains a stack of currently loading modules and provides methods to detect
+ * circular references before they cause infinite loops.
+ *
+ * @class CircularDeps
+ * @example
+ * ```typescript
+ * const deps = new CircularDeps();
+ * deps.startLoading('moduleA');
+ * deps.startLoading('moduleB');
+ *
+ * if (deps.detectCircular('moduleA', deps.getStack())) {
+ *   const path = deps.getCircularPath('moduleA', deps.getStack());
+ *   console.log(`Circular: ${path.join(' -> ')}`);
+ * }
+ * ```
  */
 export class CircularDeps {
   private loadingStack: Set<string> = new Set();

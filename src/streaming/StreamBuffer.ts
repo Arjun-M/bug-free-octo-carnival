@@ -1,5 +1,8 @@
 /**
- * @fileoverview Stream buffering and backpressure handling
+ * @file src/streaming/StreamBuffer.ts
+ * @description Stream buffering and backpressure handling with configurable watermarks
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
@@ -14,7 +17,37 @@ export interface BufferConfig {
 }
 
 /**
- * Stream buffer with backpressure support
+ * @class StreamBuffer
+ * Stream buffer with backpressure support using high/low watermarks.
+ * Automatically pauses and resumes based on buffer size.
+ *
+ * @example
+ * ```typescript
+ * // Create buffer with custom config
+ * const buffer = new StreamBuffer<number>({
+ *   maxSize: 1000,
+ *   highWaterMark: 800,
+ *   lowWaterMark: 200
+ * });
+ *
+ * // Push items
+ * const shouldContinue = buffer.push(42);
+ * if (!shouldContinue) {
+ *   console.log('Buffer paused, apply backpressure');
+ * }
+ *
+ * // Drain callback when buffer resumes
+ * buffer.drain(() => {
+ *   console.log('Buffer resumed, continue pushing');
+ * });
+ *
+ * // Listen to events
+ * buffer.on('pause', () => console.log('Paused'));
+ * buffer.on('resume', () => console.log('Resumed'));
+ *
+ * // Get stats
+ * console.log(buffer.getStats());
+ * ```
  */
 export class StreamBuffer<T> {
   private buffer: T[] = [];
@@ -24,6 +57,10 @@ export class StreamBuffer<T> {
   // eslint-disable-next-line @typescript-eslint/ban-types
   private listeners: Map<string, Set<Function>> = new Map();
 
+  /**
+   * Create a new stream buffer
+   * @param config - Buffer configuration (optional)
+   */
   constructor(config: Partial<BufferConfig> = {}) {
     this.config = {
       maxSize: config.maxSize ?? 1000,
@@ -38,8 +75,15 @@ export class StreamBuffer<T> {
 
   /**
    * Push item to buffer
-   * @param item Item to push
-   * @returns True if should continue, false if should pause
+   * @param item - Item to push
+   * @returns True if should continue pushing, false if backpressure should be applied
+   *
+   * @example
+   * ```typescript
+   * if (!buffer.push(item)) {
+   *   // Buffer full, pause producer
+   * }
+   * ```
    */
   push(item: T): boolean {
     this.buffer.push(item);
@@ -170,7 +214,7 @@ export class StreamBuffer<T> {
 
   /**
    * Get buffer statistics
-   * @returns Statistics object
+   * @returns Statistics object with current state and configuration
    */
   getStats(): {
     size: number;

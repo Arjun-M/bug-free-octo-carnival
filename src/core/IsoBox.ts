@@ -1,5 +1,8 @@
 /**
- * IsoBox - A secure, isolated sandbox for untrusted code.
+ * @file src/core/IsoBox.ts
+ * @description Main IsoBox class - orchestrates secure code execution with isolated-vm, managing execution lifecycle, resource monitoring, filesystem operations, and session management. Provides APIs for running JavaScript/TypeScript code in isolated environments with configurable timeouts, memory limits, and security controls.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { EventEmitter } from 'events';
@@ -27,6 +30,33 @@ import { ProjectLoader } from '../project/ProjectLoader.js';
 import { SessionManager, type SessionInfo } from '../session/SessionManager.js';
 import { logger } from '../utils/Logger.js';
 
+/**
+ * IsoBox - A secure, isolated sandbox for executing untrusted JavaScript/TypeScript code.
+ *
+ * Provides comprehensive sandboxing capabilities including:
+ * - Isolated VM execution with configurable memory and CPU limits
+ * - Virtual filesystem with quota management
+ * - Module system with whitelist/blacklist support
+ * - Session management for persistent state
+ * - Resource pooling for improved performance
+ * - TypeScript compilation support
+ * - Event-driven execution lifecycle monitoring
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const sandbox = new IsoBox({
+ *   timeout: 5000,
+ *   memoryLimit: 128 * 1024 * 1024,
+ *   strictTimeout: true
+ * });
+ *
+ * const result = await sandbox.run('return 2 + 2');
+ * console.log(result); // 4
+ *
+ * await sandbox.dispose();
+ * ```
+ */
 export class IsoBox {
   private isolateManager: IsolateManager;
   private isolatePool: IsolatePool | null = null;
@@ -46,6 +76,31 @@ export class IsoBox {
   private usePooling: boolean;
   private options: IsoBoxOptions;
 
+  /**
+   * Creates a new IsoBox sandbox instance.
+   *
+   * @param {IsoBoxOptions} options - Configuration options for the sandbox
+   * @param {number} [options.timeout=5000] - Maximum execution time in milliseconds
+   * @param {number} [options.cpuTimeLimit=10000] - CPU time limit in milliseconds
+   * @param {number} [options.memoryLimit=134217728] - Memory limit in bytes (default: 128MB)
+   * @param {boolean} [options.strictTimeout=true] - Enable strict timeout enforcement with infinite loop detection
+   * @param {boolean} [options.usePooling=false] - Enable isolate pooling for improved performance
+   * @param {FilesystemOptions} [options.filesystem] - Filesystem configuration
+   * @param {RequireOptions} [options.require] - Module system configuration
+   * @param {PoolOptions} [options.pool] - Pooling configuration
+   * @throws {SandboxError} If options are invalid
+   * @example
+   * ```typescript
+   * const sandbox = new IsoBox({
+   *   timeout: 3000,
+   *   memoryLimit: 64 * 1024 * 1024,
+   *   require: {
+   *     mode: 'whitelist',
+   *     whitelist: ['fs', 'path']
+   *   }
+   * });
+   * ```
+   */
   constructor(options: IsoBoxOptions = {}) {
     this.options = options;
     this.timeout = options.timeout ?? 5000;
@@ -119,6 +174,42 @@ export class IsoBox {
     if (this.fsMaxSize < 1024 * 1024) throw new SandboxError('FS quota must be > 1MB', 'INVALID_OPTION');
   }
 
+  /**
+   * Executes JavaScript/TypeScript code in an isolated environment.
+   *
+   * Creates a new isolate (or reuses from pool), sets up the execution context,
+   * injects globals, and runs the code with timeout and resource monitoring.
+   *
+   * @template T - Expected return type of the code execution
+   * @param {string} code - JavaScript/TypeScript code to execute
+   * @param {RunOptions} [opts={}] - Execution options
+   * @param {number} [opts.timeout] - Override default timeout
+   * @param {string} [opts.filename] - Optional filename for better error messages
+   * @param {Language} [opts.language] - Code language ('javascript' or 'typescript')
+   * @returns {Promise<T>} The result of code execution
+   * @throws {SandboxError} If code is empty or sandbox is disposed
+   * @throws {TimeoutError} If execution exceeds timeout
+   * @throws {MemoryLimitError} If memory limit is exceeded
+   * @throws {CPULimitError} If CPU limit is exceeded
+   * @example
+   * ```typescript
+   * // Simple arithmetic
+   * const result = await sandbox.run<number>('return 2 + 2');
+   * console.log(result); // 4
+   *
+   * // Async code
+   * const data = await sandbox.run(`
+   *   return new Promise(resolve => {
+   *     setTimeout(() => resolve('done'), 1000);
+   *   });
+   * `);
+   *
+   * // TypeScript
+   * const typed = await sandbox.run<string>('const x: number = 42; return x.toString();', {
+   *   language: 'typescript'
+   * });
+   * ```
+   */
   async run<T = any>(code: string, opts: RunOptions = {}): Promise<T> {
     this.ensureNotDisposed();
 
@@ -304,6 +395,22 @@ export class IsoBox {
     }
   }
 
+  /**
+   * Compiles/transpiles code for later execution.
+   *
+   * If the language is TypeScript, transpiles it to JavaScript. Returns a CompiledScript
+   * object that can be reused to avoid re-compilation overhead.
+   *
+   * @param {string} code - Source code to compile
+   * @param {Language} [language='javascript'] - Source language ('javascript', 'typescript', or 'ts')
+   * @returns {Promise<CompiledScript>} Compiled script wrapper
+   * @throws {SandboxError} If code is empty, sandbox is disposed, or compilation fails
+   * @example
+   * ```typescript
+   * const compiled = await sandbox.compile('const x: number = 42; return x;', 'typescript');
+   * console.log(compiled.getCompiled()); // JavaScript output
+   * ```
+   */
   async compile(code: string, language: Language = 'javascript'): Promise<CompiledScript> {
     this.ensureNotDisposed();
 
@@ -326,6 +433,31 @@ export class IsoBox {
     return new CompiledScript(code, compiledCode, language);
   }
 
+  /**
+   * Executes a multi-file project in the sandbox.
+   *
+   * Loads all project files into the virtual filesystem, compiles TypeScript if needed,
+   * and executes the entry point file.
+   *
+   * @template T - Expected return type
+   * @param {ProjectOptions} project - Project configuration
+   * @param {ProjectFile[]} project.files - Array of project files with path and content
+   * @param {string} project.entrypoint - Path to entry point file (e.g., 'index.js')
+   * @param {number} [project.timeout] - Override default timeout
+   * @returns {Promise<T>} Result from entry point execution
+   * @throws {SandboxError} If project validation fails or sandbox is disposed
+   * @example
+   * ```typescript
+   * const result = await sandbox.runProject({
+   *   files: [
+   *     { path: 'math.js', content: 'exports.add = (a, b) => a + b;' },
+   *     { path: 'index.js', content: 'const math = require("./math"); return math.add(2, 3);' }
+   *   ],
+   *   entrypoint: 'index.js'
+   * });
+   * console.log(result); // 5
+   * ```
+   */
   async runProject<T = any>(project: ProjectOptions): Promise<T> {
     this.ensureNotDisposed();
 
@@ -351,6 +483,25 @@ export class IsoBox {
     }
   }
 
+  /**
+   * Executes code with streaming output support.
+   *
+   * Returns an async iterator that yields execution progress events,
+   * including start, result, error, and end events.
+   *
+   * @param {string} code - JavaScript code to execute
+   * @yields {{ type: 'start' | 'result' | 'error' | 'end', value?: any, error?: string, timestamp: number }}
+   * @throws {SandboxError} If code is empty or sandbox is disposed
+   * @example
+   * ```typescript
+   * for await (const event of sandbox.runStream('return 42')) {
+   *   console.log(event);
+   *   // { type: 'start', timestamp: ... }
+   *   // { type: 'result', value: 42, timestamp: ... }
+   *   // { type: 'end', timestamp: ... }
+   * }
+   * ```
+   */
   async *runStream(code: string): AsyncIterable<any> {
     this.ensureNotDisposed();
 
@@ -374,6 +525,24 @@ export class IsoBox {
     yield { type: 'end', timestamp: Date.now() };
   }
 
+  /**
+   * Creates a persistent session for stateful code execution.
+   *
+   * Sessions allow multiple code executions to share state and persist
+   * variables between runs.
+   *
+   * @param {string} id - Unique session identifier
+   * @param {SessionOptions} [opts={}] - Session configuration
+   * @param {number} [opts.ttl] - Session time-to-live in milliseconds
+   * @param {number} [opts.maxExecutions] - Maximum number of executions per session
+   * @returns {Promise<any>} Created session object
+   * @throws {SandboxError} If sandbox is disposed
+   * @example
+   * ```typescript
+   * const session = await sandbox.createSession('user-123', { ttl: 3600000 });
+   * // Session persists for 1 hour
+   * ```
+   */
   async createSession(id: string, opts: SessionOptions = {}): Promise<any> {
     this.ensureNotDisposed();
 
@@ -383,18 +552,49 @@ export class IsoBox {
     return session;
   }
 
+  /**
+   * Retrieves an existing session by ID.
+   *
+   * @param {string} id - Session identifier
+   * @returns {any} Session object or null if not found
+   */
   getSession(id: string): any {
     return this.sessionManager.getSession(id);
   }
 
+  /**
+   * Lists all active sessions.
+   *
+   * @returns {SessionInfo[]} Array of session information objects
+   */
   listSessions(): SessionInfo[] {
     return this.sessionManager.listSessions();
   }
 
+  /**
+   * Deletes a session and cleans up its resources.
+   *
+   * @param {string} id - Session identifier
+   * @returns {Promise<void>}
+   */
   async deleteSession(id: string): Promise<void> {
     await this.sessionManager.deleteSession(id);
   }
 
+  /**
+   * Pre-warms the isolate pool for improved performance.
+   *
+   * Creates and initializes isolates in advance, optionally running
+   * warmup code to prime the JIT compiler.
+   *
+   * @param {string} [code] - Optional warmup code to execute in each isolate
+   * @returns {Promise<void>}
+   * @throws {SandboxError} If pooling is disabled or sandbox is disposed
+   * @example
+   * ```typescript
+   * await sandbox.warmupPool('const x = 1 + 1;'); // Warm up with simple code
+   * ```
+   */
   async warmupPool(code?: string): Promise<void> {
     this.ensureNotDisposed();
 
@@ -405,18 +605,38 @@ export class IsoBox {
     await this.isolatePool.warmup(code);
   }
 
+  /**
+   * Gets statistics about the isolate pool.
+   *
+   * @returns {any} Pool statistics or null if pooling is disabled
+   */
   getPoolStats(): any {
     return this.isolatePool?.getStats() ?? null;
   }
 
+  /**
+   * Gets the virtual filesystem instance.
+   *
+   * @returns {MemFS} In-memory filesystem
+   */
   get fs(): MemFS {
     return this.memfs;
   }
 
+  /**
+   * Gets the module system instance.
+   *
+   * @returns {ModuleSystem | null} Module system or null if not configured
+   */
   getModuleSystem(): ModuleSystem | null {
     return this.moduleSystem;
   }
 
+  /**
+   * Gets global execution metrics.
+   *
+   * @returns {GlobalMetrics} Metrics including total executions, errors, average time, CPU/memory usage
+   */
   getMetrics(): GlobalMetrics {
     return { ...this.globalMetrics };
   }
@@ -436,14 +656,45 @@ export class IsoBox {
       (prevAvg * prevTotal + duration) / this.globalMetrics.totalExecutions;
   }
 
+  /**
+   * Registers an event listener.
+   *
+   * @param {string} event - Event name ('execution', 'timeout', 'resource-warning', 'session:created', 'error')
+   * @param {Function} handler - Event handler function
+   * @example
+   * ```typescript
+   * sandbox.on('timeout', (event) => {
+   *   console.log(`Execution ${event.id} timed out: ${event.reason}`);
+   * });
+   * ```
+   */
   on(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.on(event, handler);
   }
 
+  /**
+   * Removes an event listener.
+   *
+   * @param {string} event - Event name
+   * @param {Function} handler - Event handler function to remove
+   */
   off(event: string, handler: (...args: any[]) => void): void {
     this.eventEmitter.off(event, handler);
   }
 
+  /**
+   * Disposes of the sandbox and releases all resources.
+   *
+   * Cleans up isolates, pools, sessions, filesystem, and event listeners.
+   * After disposal, the sandbox cannot be used again.
+   *
+   * @returns {Promise<void>}
+   * @example
+   * ```typescript
+   * await sandbox.dispose();
+   * // Sandbox is now unusable
+   * ```
+   */
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;

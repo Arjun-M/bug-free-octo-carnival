@@ -1,11 +1,22 @@
 /**
- * @fileoverview Generator handling utilities
+ * @file src/streaming/GeneratorHandler.ts
+ * @description Generator handling utilities for sync and async iterators
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
  * Check if value is a generator or async generator
- * @param value Value to check
- * @returns True if generator
+ * @param value - Value to check
+ * @returns True if value has iterator protocol
+ *
+ * @example
+ * ```typescript
+ * function* gen() { yield 1; }
+ * isGenerator(gen()); // true
+ * isGenerator([1, 2, 3]); // true
+ * isGenerator(42); // false
+ * ```
  */
 export function isGenerator(value: any): boolean {
   if (!value) return false;
@@ -21,8 +32,17 @@ export function isGenerator(value: any): boolean {
 
 /**
  * Get iterator from value
- * @param value Value to get iterator from
- * @returns Iterator or null
+ * @param value - Value to get iterator from
+ * @returns AsyncIterable, Iterable, or null if not iterable
+ *
+ * @example
+ * ```typescript
+ * const arr = [1, 2, 3];
+ * const iter = getIterator(arr);
+ * for (const item of iter) {
+ *   console.log(item);
+ * }
+ * ```
  */
 export function getIterator(value: any): AsyncIterable<any> | Iterable<any> | null {
   if (!value) return null;
@@ -42,8 +62,16 @@ export function getIterator(value: any): AsyncIterable<any> | Iterable<any> | nu
 
 /**
  * Convert sync iterator to async iterator
- * @param iterable Iterable to convert
+ * @param iterable - Iterable to convert
  * @returns Async iterable
+ *
+ * @example
+ * ```typescript
+ * const syncArray = [1, 2, 3];
+ * for await (const item of asyncIterator(syncArray)) {
+ *   console.log(item);
+ * }
+ * ```
  */
 export async function* asyncIterator<T>(
   iterable: Iterable<T>
@@ -55,9 +83,28 @@ export async function* asyncIterator<T>(
 
 /**
  * Consume async iterator with timeout
- * @param asyncIter Async iterator
- * @param timeout Timeout in milliseconds
- * @returns Async iterable with timeout
+ * @param asyncIter - Async iterator to wrap
+ * @param timeout - Timeout in milliseconds
+ * @returns Async iterable that throws on timeout
+ * @throws {Error} If timeout is exceeded
+ *
+ * @example
+ * ```typescript
+ * async function* slowGenerator() {
+ *   for (let i = 0; i < 10; i++) {
+ *     await new Promise(r => setTimeout(r, 1000));
+ *     yield i;
+ *   }
+ * }
+ *
+ * try {
+ *   for await (const item of withTimeout(slowGenerator(), 3000)) {
+ *     console.log(item);
+ *   }
+ * } catch (e) {
+ *   console.error('Timeout!');
+ * }
+ * ```
  */
 export async function* withTimeout<T>(
   asyncIter: AsyncIterable<T>,
@@ -76,9 +123,21 @@ export async function* withTimeout<T>(
 
 /**
  * Limit async iterator to N items
- * @param asyncIter Async iterator
- * @param limit Maximum items to yield
+ * @param asyncIter - Async iterator to limit
+ * @param limit - Maximum items to yield
  * @returns Limited async iterable
+ *
+ * @example
+ * ```typescript
+ * async function* infinite() {
+ *   let i = 0;
+ *   while (true) yield i++;
+ * }
+ *
+ * for await (const item of limit(infinite(), 5)) {
+ *   console.log(item); // Only prints 0-4
+ * }
+ * ```
  */
 export async function* limit<T>(
   asyncIter: AsyncIterable<T>,
@@ -94,9 +153,20 @@ export async function* limit<T>(
 
 /**
  * Buffer async iterator items
- * @param asyncIter Async iterator
- * @param bufferSize Size of buffer
- * @returns Buffered async iterable
+ * @param asyncIter - Async iterator to buffer
+ * @param bufferSize - Size of buffer (default: 10)
+ * @returns Buffered async iterable yielding arrays
+ *
+ * @example
+ * ```typescript
+ * async function* numbers() {
+ *   for (let i = 0; i < 25; i++) yield i;
+ * }
+ *
+ * for await (const batch of buffer(numbers(), 10)) {
+ *   console.log('Batch:', batch); // [0..9], [10..19], [20..24]
+ * }
+ * ```
  */
 export async function* buffer<T>(
   asyncIter: AsyncIterable<T>,

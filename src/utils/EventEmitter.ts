@@ -1,19 +1,58 @@
 /**
- * @fileoverview Event emitter for IsoBox events
+ * @file src/utils/EventEmitter.ts
+ * @description Simple event emitter for IsoBox internal events
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 type EventHandler = (...args: any[]) => void;
 
 /**
- * Simple event emitter
+ * @class EventEmitter
+ * Simple event emitter for publish-subscribe pattern.
+ * Provides safe error handling for event listeners.
+ *
+ * @example
+ * ```typescript
+ * // Create emitter
+ * const emitter = new EventEmitter();
+ *
+ * // Register listener
+ * emitter.on('data', (value) => {
+ *   console.log('Received:', value);
+ * });
+ *
+ * // One-time listener
+ * emitter.once('ready', () => {
+ *   console.log('Ready!');
+ * });
+ *
+ * // Emit events
+ * emitter.emit('data', 42);
+ * emitter.emit('ready');
+ *
+ * // Remove listener
+ * const handler = () => console.log('test');
+ * emitter.on('test', handler);
+ * emitter.off('test', handler);
+ *
+ * // Check listeners
+ * console.log('Event names:', emitter.eventNames());
+ * console.log('Listener count:', emitter.listenerCount('data'));
+ * ```
  */
 export class EventEmitter {
   private listeners: Map<string, Set<EventHandler>> = new Map();
 
   /**
    * Register event listener
-   * @param event Event name
-   * @param handler Handler function
+   * @param event - Event name
+   * @param handler - Handler function
+   *
+   * @example
+   * ```typescript
+   * emitter.on('message', (msg) => console.log(msg));
+   * ```
    */
   on(event: string, handler: EventHandler): void {
     if (!this.listeners.has(event)) {
@@ -36,8 +75,13 @@ export class EventEmitter {
 
   /**
    * Emit event
-   * @param event Event name
-   * @param args Arguments to pass to handlers
+   * @param event - Event name
+   * @param args - Arguments to pass to handlers
+   *
+   * @example
+   * ```typescript
+   * emitter.emit('data', { id: 1, value: 'test' });
+   * ```
    */
   emit(event: string, ...args: any[]): void {
     if (!this.listeners.has(event)) {
@@ -57,8 +101,15 @@ export class EventEmitter {
 
   /**
    * Register one-time event listener
-   * @param event Event name
-   * @param handler Handler function
+   * @param event - Event name
+   * @param handler - Handler function (will be called only once)
+   *
+   * @example
+   * ```typescript
+   * emitter.once('init', () => {
+   *   console.log('Initialized once!');
+   * });
+   * ```
    */
   once(event: string, handler: EventHandler): void {
     const wrapper = (...args: any[]) => {
@@ -70,7 +121,7 @@ export class EventEmitter {
 
   /**
    * Remove all listeners for event
-   * @param event Event name (optional, removes all if not specified)
+   * @param event - Event name (optional, removes all if not specified)
    */
   removeAllListeners(event?: string): void {
     if (event) {

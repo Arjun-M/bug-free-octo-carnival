@@ -1,14 +1,23 @@
 /**
- * @fileoverview File system watcher for monitoring changes
+ * @file src/filesystem/FSWatcher.ts
+ * @description File system watcher for monitoring changes to files and directories. Provides event-based notifications for create, modify, and delete operations.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Callback type for file system watchers
+ * Callback function type for file system change events.
+ *
+ * @callback WatchCallback
+ * @param event - Type of change event
+ * @param path - Path where change occurred
  */
 export type WatchCallback = (event: 'create' | 'modify' | 'delete', path: string) => void;
 
 /**
- * Watch subscription with ID for unsubscribe
+ * Watch subscription with unique ID for management.
+ *
+ * @interface WatchSubscription
  */
 export interface WatchSubscription {
   id: string;
@@ -17,7 +26,13 @@ export interface WatchSubscription {
 }
 
 /**
- * Manages file system watches and notifications
+ * Manages file system watches and change notifications.
+ *
+ * Allows multiple watchers to subscribe to path changes. Notifies both exact path
+ * watchers and parent directory watchers when events occur. Handles subscription
+ * lifecycle with unique IDs for management.
+ *
+ * @class FSWatcher
  */
 export class FSWatcher {
   private subscriptions: Map<string, WatchSubscription> = new Map();

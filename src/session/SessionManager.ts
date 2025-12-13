@@ -1,5 +1,8 @@
 /**
- * Manages persistent execution sessions.
+ * @file src/session/SessionManager.ts
+ * @description Session management for persistent stateful code execution. Manages session lifecycle, state persistence, TTL expiration, execution limits, and automatic cleanup of expired sessions.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { SandboxError } from '../core/types.js';
@@ -8,15 +11,39 @@ import { StateStorage } from './StateStorage.js';
 import { logger } from '../utils/Logger.js';
 import type { IsoBox } from '../core/IsoBox.js';
 
+/**
+ * Session information snapshot.
+ *
+ * @interface
+ */
 export interface SessionInfo {
+  /** Unique session identifier */
   id: string;
+  /** Creation timestamp */
   created: number;
+  /** Last access timestamp */
   lastAccessed: number;
+  /** Expiration timestamp */
   expiresAt: number;
+  /** Number of executions performed */
   executionCount: number;
+  /** Current session state */
   state: Record<string, any>;
 }
 
+/**
+ * Session - Represents a persistent execution session with stateful context.
+ *
+ * Allows multiple code executions to share state, with TTL-based expiration
+ * and optional execution limits. State persists across runs within the session lifetime.
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const session = await sandbox.createSession('user-123', { ttl: 3600000 });
+ * await session.run('globalThis.counter = (globalThis.counter || 0) + 1; return counter;');
+ * ```
+ */
 export class Session {
   private id: string;
   private state: Map<string, any>;
@@ -213,6 +240,21 @@ export class Session {
   }
 }
 
+/**
+ * SessionManager - Manages multiple execution sessions with automatic cleanup.
+ *
+ * Coordinates session creation, retrieval, deletion, and periodic cleanup of expired
+ * sessions. Each session maintains independent state and execution context.
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const manager = new SessionManager(sandbox, 60000);
+ * const session = manager.createSession('sess-1', { ttl: 3600000 });
+ * const sessions = manager.listSessions();
+ * await manager.cleanup(); // Remove expired sessions
+ * ```
+ */
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private stateStorage: StateStorage;

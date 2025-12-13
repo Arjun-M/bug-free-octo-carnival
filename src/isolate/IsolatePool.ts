@@ -1,5 +1,8 @@
 /**
- * Manages a pool of reusable isolates to reduce startup overhead.
+ * @file src/isolate/IsolatePool.ts
+ * @description Connection pool for reusable isolates to reduce startup overhead. Manages isolate lifecycle with configurable min/max sizes, idle timeouts, warmup capabilities, and automatic cleanup.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import type { PoolOptions } from '../core/types.js';
@@ -10,7 +13,36 @@ import { AsyncQueue } from '../utils/AsyncQueue.js';
 import { logger } from '../utils/Logger.js';
 
 /**
- * Connection pool for reusing isolates.
+ * Connection pool for reusing isolates to improve performance.
+ *
+ * Maintains a pool of pre-initialized isolates that can be borrowed and returned,
+ * significantly reducing the overhead of creating new isolates for each execution.
+ *
+ * Features:
+ * - Configurable min/max pool sizes
+ * - Idle timeout with automatic cleanup
+ * - Optional warmup code execution
+ * - Health checking and automatic replacement
+ * - Queue management for concurrent requests
+ * - Statistics tracking (acquisitions, wait times, errors)
+ *
+ * @class IsolatePool
+ * @example
+ * ```typescript
+ * const pool = new IsolatePool({
+ *   min: 5,
+ *   max: 50,
+ *   idleTimeout: 30000,
+ *   warmupCode: 'const utils = { add: (a, b) => a + b };'
+ * });
+ *
+ * await pool.warmup();
+ *
+ * const result = await pool.execute('utils.add(1, 2)', { timeout: 5000 });
+ * console.log(result); // 3
+ *
+ * await pool.dispose();
+ * ```
  */
 export class IsolatePool {
   private available: PooledIsolate[] = [];

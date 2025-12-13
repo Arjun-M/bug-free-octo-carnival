@@ -1,12 +1,17 @@
 /**
- * @fileoverview Import resolution for relative, absolute, and node module paths
+ * @file src/modules/ImportResolver.ts
+ * @description Import path resolution for relative, absolute, and node module specifiers. Handles extension resolution, index file fallbacks, and filesystem lookups.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { MemFS } from '../filesystem/MemFS.js';
 import { SandboxError } from '../core/types.js';
 
 /**
- * Resolution options
+ * Configuration options for import resolution.
+ *
+ * @interface ResolveOptions
  */
 export interface ResolveOptions {
   extensions?: string[];
@@ -14,7 +19,23 @@ export interface ResolveOptions {
 }
 
 /**
- * Resolves import/require statements to actual module paths
+ * Resolves import/require statements to actual module paths in the virtual filesystem.
+ *
+ * Handles three types of specifiers:
+ * - Relative: './file', '../folder/file'
+ * - Absolute: '/src/file'
+ * - Node modules: 'lodash', '@scope/package'
+ *
+ * Automatically tries common extensions (.js, .ts, .json) and index files when
+ * exact paths don't exist.
+ *
+ * @class ImportResolver
+ * @example
+ * ```typescript
+ * const resolver = new ImportResolver(memfs);
+ * const path = resolver.resolve('./utils', '/src/index.js');
+ * // Returns: '/src/utils.js' (if exists)
+ * ```
  */
 export class ImportResolver {
   private memfs: MemFS;

@@ -1,9 +1,39 @@
 /**
- * @fileoverview High-resolution timer utility using process.hrtime
+ * @file src/utils/Timer.ts
+ * @description High-resolution timer utility using process.hrtime for nanosecond precision
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * High-resolution timer for nanosecond precision timing
+ * @class Timer
+ * High-resolution timer for nanosecond precision timing using process.hrtime.bigint().
+ * Supports pause/resume functionality and provides both millisecond and nanosecond precision.
+ *
+ * @example
+ * ```typescript
+ * // Basic timing
+ * const timer = new Timer();
+ * timer.start();
+ *
+ * // ... do work ...
+ *
+ * const elapsed = timer.stop();
+ * console.log(`Took ${elapsed}ms`);
+ *
+ * // Pause and resume
+ * timer.start();
+ * // ... work ...
+ * timer.pause();
+ * // ... pause period ...
+ * timer.resume();
+ * // ... more work ...
+ * console.log(`Total time: ${timer.elapsed()}ms`);
+ *
+ * // High precision
+ * const nanos = timer.elapsedNanos();
+ * console.log(`Elapsed: ${nanos}ns`);
+ * ```
  */
 export class Timer {
   private startTime: bigint = 0n;
@@ -13,6 +43,11 @@ export class Timer {
   /**
    * Start the timer
    * @returns This timer instance for chaining
+   *
+   * @example
+   * ```typescript
+   * const timer = new Timer().start();
+   * ```
    */
   start(): Timer {
     this.startTime = process.hrtime.bigint();
@@ -54,7 +89,13 @@ export class Timer {
 
   /**
    * Get elapsed time in nanoseconds for high precision
-   * @returns Elapsed time in nanoseconds
+   * @returns Elapsed time in nanoseconds as BigInt
+   *
+   * @example
+   * ```typescript
+   * const nanos = timer.elapsedNanos();
+   * console.log(`${nanos}ns`);
+   * ```
    */
   elapsedNanos(): bigint {
     if (this.startTime === 0n) {

@@ -1,9 +1,27 @@
 /**
- * Wrapper for a reused isolate.
+ * @file src/isolate/PooledIsolate.ts
+ * @description Wrapper class for pooled isolate instances, managing reuse, health tracking, execution counting, and lifecycle operations. Enables efficient isolate recycling with state reset capabilities.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import ivm from 'isolated-vm';
 
+/**
+ * PooledIsolate - Wrapper for a reusable isolated-vm isolate instance.
+ *
+ * Manages lifecycle, health status, execution statistics, and context reset
+ * for isolates that are recycled in a connection pool to improve performance.
+ *
+ * @class
+ * @example
+ * ```typescript
+ * const pooled = new PooledIsolate('isolate-1', 128 * 1024 * 1024);
+ * pooled.markUsed();
+ * await pooled.reset(); // Clean context for reuse
+ * pooled.dispose(); // Cleanup when done
+ * ```
+ */
 export class PooledIsolate {
   private id: string;
   public isolate: ivm.Isolate;

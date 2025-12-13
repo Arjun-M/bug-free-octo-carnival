@@ -1,19 +1,46 @@
 /**
- * @fileoverview Import/require path resolution
+ * @file src/project/ImportResolver.ts
+ * @description Import/require path resolution for module loading in virtual filesystem
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
 
 /**
- * Resolves import specifiers to actual file paths
+ * @class ImportResolver
+ * Resolves import specifiers to actual file paths in virtual filesystem.
+ * Handles relative imports (./file), absolute imports (/src/file), and node modules.
+ *
+ * @example
+ * ```typescript
+ * // Resolve relative import
+ * const path = ImportResolver.resolveImport('./utils', '/src/index.js', memfs);
+ * // Returns: '/src/utils.js'
+ *
+ * // Check path types
+ * ImportResolver.isRelative('./file'); // true
+ * ImportResolver.isAbsolute('/src/file'); // true
+ * ImportResolver.isNodeModule('lodash'); // true
+ *
+ * // Path manipulation
+ * const normalized = ImportResolver.normalizePath('/src/../lib/./file.js');
+ * // Returns: '/lib/file.js'
+ * ```
  */
 export class ImportResolver {
   /**
    * Resolve import specifier to file path
-   * @param specifier Import specifier (e.g., './utils', '@scope/pkg', 'lodash')
-   * @param fromPath Path of importing file
-   * @param memfs MemFS instance for checking existence
+   * @param specifier - Import specifier (e.g., './utils', '@scope/pkg', 'lodash')
+   * @param fromPath - Path of importing file
+   * @param memfs - MemFS instance for checking file existence (optional)
    * @returns Resolved file path
+   *
+   * @example
+   * ```typescript
+   * const path = ImportResolver.resolveImport('./helper', '/src/index.js', memfs);
+   * // Returns: '/src/helper.js' (if exists) or '/src/helper/index.js'
+   * ```
    */
   static resolveImport(
     specifier: string,
@@ -215,9 +242,15 @@ export class ImportResolver {
 
   /**
    * Get relative path from one file to another
-   * @param fromPath Source file path
-   * @param toPath Target file path
-   * @returns Relative path
+   * @param fromPath - Source file path
+   * @param toPath - Target file path
+   * @returns Relative path from source to target
+   *
+   * @example
+   * ```typescript
+   * const rel = ImportResolver.getRelativePath('/src/index.js', '/lib/utils.js');
+   * // Returns: './../lib/utils.js'
+   * ```
    */
   static getRelativePath(fromPath: string, toPath: string): string {
     const fromParts = fromPath.split('/').filter((p) => p);

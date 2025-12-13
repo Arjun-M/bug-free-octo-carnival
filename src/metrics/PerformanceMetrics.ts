@@ -1,5 +1,8 @@
 /**
- * @fileoverview Performance metrics tracking and analysis
+ * @file src/metrics/PerformanceMetrics.ts
+ * @description Performance metrics tracking and analysis with threshold monitoring
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
@@ -26,7 +29,33 @@ export interface PerformanceThresholds {
 }
 
 /**
- * Tracks performance metrics during execution
+ * @class PerformanceMetrics
+ * Tracks performance metrics during execution with configurable thresholds.
+ * Records custom metrics and provides statistical analysis.
+ *
+ * @example
+ * ```typescript
+ * // Create with custom thresholds
+ * const metrics = new PerformanceMetrics({
+ *   executionTime: 5000,  // 5 second limit
+ *   memory: 64 * 1024 * 1024,  // 64MB limit
+ *   cpuUsage: 90  // 90% CPU limit
+ * });
+ *
+ * // Start tracking
+ * metrics.start();
+ *
+ * // Record custom metrics
+ * metrics.recordMetric('api_calls', 42, 'count');
+ * metrics.recordMetric('response_time', 150, 'ms');
+ *
+ * // Get statistics
+ * const stats = metrics.getMetricStats('response_time');
+ * console.log(`Avg response: ${stats.avg}ms`);
+ *
+ * // Export results
+ * console.log(metrics.toString());
+ * ```
  */
 export class PerformanceMetrics {
   private metrics: Map<string, PerformanceMetric[]> = new Map();
@@ -34,6 +63,10 @@ export class PerformanceMetrics {
   private startTime: number = 0;
   private startMemory: number = 0;
 
+  /**
+   * Create a new performance metrics tracker
+   * @param thresholds - Performance thresholds for warnings (optional)
+   */
   constructor(thresholds: PerformanceThresholds = {}) {
     this.thresholds = {
       executionTime: thresholds.executionTime ?? 30000,
@@ -57,10 +90,15 @@ export class PerformanceMetrics {
 
   /**
    * Record a performance metric
-   * @param name Metric name
-   * @param value Metric value
-   * @param unit Metric unit
-   * @param context Optional context
+   * @param name - Metric name
+   * @param value - Metric value
+   * @param unit - Metric unit (e.g., 'ms', 'bytes', 'count')
+   * @param context - Optional context information
+   *
+   * @example
+   * ```typescript
+   * metrics.recordMetric('database_query', 45, 'ms', { query: 'SELECT * FROM users' });
+   * ```
    */
   recordMetric(
     name: string,
@@ -126,8 +164,8 @@ export class PerformanceMetrics {
 
   /**
    * Get metric statistics
-   * @param name Metric name
-   * @returns Statistics object
+   * @param name - Metric name
+   * @returns Statistics object with min, max, avg, and count, or null if metric not found
    */
   getMetricStats(name: string): {
     min: number;
@@ -208,7 +246,7 @@ export class PerformanceMetrics {
 
   /**
    * Export metrics as JSON
-   * @returns JSON object
+   * @returns JSON object containing all metrics and statistics
    */
   toJSON(): Record<string, any> {
     const result: Record<string, any> = {};

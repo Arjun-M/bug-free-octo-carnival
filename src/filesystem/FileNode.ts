@@ -1,12 +1,17 @@
 /**
- * @fileoverview File system tree node representing file or directory
+ * @file src/filesystem/FileNode.ts
+ * @description File system tree node representing a file or directory in the virtual filesystem. Provides hierarchical structure with parent-child relationships and metadata tracking.
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { FileMetadata } from './FileMetadata.js';
 import { PERMISSIONS } from './Permissions.js';
 
 /**
- * Node options for creating files or directories
+ * Configuration options for creating a FileNode.
+ *
+ * @interface FileNodeOptions
  */
 export interface FileNodeOptions {
   isDirectory: boolean;
@@ -15,8 +20,13 @@ export interface FileNodeOptions {
 }
 
 /**
- * Tree node in the virtual filesystem
- * Represents either a file or a directory
+ * Tree node in the virtual filesystem representing a file or directory.
+ *
+ * Provides hierarchical structure with parent-child relationships, content storage
+ * for files, and metadata tracking. Directories store children in a Map for efficient
+ * lookups.
+ *
+ * @class FileNode
  */
 export class FileNode {
   isDirectory: boolean;

@@ -1,11 +1,21 @@
 /**
- * @fileoverview Object utilities for value transfer between contexts
+ * @file src/utils/ObjectUtils.ts
+ * @description Object utilities for value transfer between contexts and safe proxies
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 /**
- * Check if value is transferable
- * @param value Value to check
- * @returns True if can be transferred
+ * Check if value is transferable between contexts
+ * @param value - Value to check
+ * @returns True if value can be safely transferred
+ *
+ * @example
+ * ```typescript
+ * isTransferable(42); // true (primitive)
+ * isTransferable({ x: 1 }); // true (serializable object)
+ * isTransferable(new WeakMap()); // false (not serializable)
+ * ```
  */
 export function isTransferable(value: any): boolean {
   if (value === null || value === undefined) {
@@ -43,9 +53,23 @@ export function isTransferable(value: any): boolean {
 }
 
 /**
- * Copy a value (deep clone)
- * @param value Value to copy
+ * Copy a value (deep clone) with circular reference detection
+ * @param value - Value to copy
+ * @param seen - WeakSet for tracking circular references (internal use)
  * @returns Deep copy of value
+ *
+ * @example
+ * ```typescript
+ * const original = { a: 1, b: { c: 2 } };
+ * const copy = copyValue(original);
+ * copy.b.c = 3;
+ * console.log(original.b.c); // Still 2
+ *
+ * // Handles circular references
+ * const circular: any = { x: 1 };
+ * circular.self = circular;
+ * const copied = copyValue(circular); // Returns with '[Circular]' for self
+ * ```
  */
 export function copyValue(value: any, seen: WeakSet<any> = new WeakSet()): any {
   if (value === null || value === undefined) {
@@ -106,9 +130,21 @@ export function copyValue(value: any, seen: WeakSet<any> = new WeakSet()): any {
 }
 
 /**
- * Serialize value for transfer
- * @param value Value to serialize
- * @returns Serialized string
+ * Serialize value for transfer between contexts
+ * Handles circular references, functions, and buffers
+ * @param value - Value to serialize
+ * @returns Serialized JSON string
+ *
+ * @example
+ * ```typescript
+ * const obj = {
+ *   data: 'test',
+ *   buffer: Buffer.from('hello'),
+ *   fn: () => console.log('hi')
+ * };
+ * const serialized = serializeForTransfer(obj);
+ * // Functions become '[Function]', buffers become base64
+ * ```
  */
 export function serializeForTransfer(value: any): string {
   const seen = new WeakSet();
@@ -137,8 +173,22 @@ export function serializeForTransfer(value: any): string {
 
 /**
  * Create a safe proxy for object access
- * @param obj Object to wrap
+ * Blocks access to dangerous properties like __proto__, constructor, and prototype
+ * @param obj - Object to wrap with safety layer
  * @returns Proxy with access restrictions
+ *
+ * @example
+ * ```typescript
+ * const unsafe = { data: 'test' };
+ * const safe = createSafeProxy(unsafe);
+ *
+ * console.log(safe.data); // 'test'
+ * console.log(safe.__proto__); // undefined (blocked)
+ * console.log(safe.constructor); // undefined (blocked)
+ *
+ * safe.constructor = 'attack'; // Fails silently
+ * console.log(safe.constructor); // Still undefined
+ * ```
  */
 export function createSafeProxy(obj: any): any {
   const blacklist = new Set(['constructor', '__proto__', 'prototype']);

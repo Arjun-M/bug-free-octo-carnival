@@ -1,5 +1,8 @@
 /**
- * @fileoverview TypeScript to JavaScript transpiler using official TypeScript API
+ * @file src/project/TypeScriptCompiler.ts
+ * @description TypeScript to JavaScript transpiler using official TypeScript API
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { logger } from '../utils/Logger.js';
@@ -29,12 +32,36 @@ export interface TypeCheckResult {
 }
 
 /**
- * TypeScript to JavaScript transpiler
- * Uses the official 'typescript' package for reliable transpilation
+ * @class TypeScriptCompiler
+ * TypeScript to JavaScript transpiler using the official TypeScript API.
+ * Provides compilation, type checking, and configuration management.
+ *
+ * @example
+ * ```typescript
+ * // Create compiler with custom options
+ * const compiler = new TypeScriptCompiler({
+ *   target: 'ES2020',
+ *   module: 'esnext',
+ *   strict: true
+ * });
+ *
+ * // Compile TypeScript code
+ * const js = compiler.compile('const x: number = 42;', 'test.ts');
+ *
+ * // Validate types
+ * const result = compiler.validateTypes('const x: number = "error";');
+ * if (!result.valid) {
+ *   console.error('Type errors:', result.errors);
+ * }
+ * ```
  */
 export class TypeScriptCompiler {
   private compilerOptions: ts.CompilerOptions;
 
+  /**
+   * Create a new TypeScript compiler
+   * @param options - Partial compiler options (defaults will be applied)
+   */
   constructor(options: Partial<CompilerOptions> = {}) {
     // Map the custom interface to official ts.CompilerOptions
     this.compilerOptions = {
@@ -76,9 +103,17 @@ export class TypeScriptCompiler {
 
   /**
    * Compile TypeScript code to JavaScript
-   * @param code TypeScript code
-   * @param filename File being compiled
+   * @param code - TypeScript source code
+   * @param filename - Name of file being compiled (for error reporting)
    * @returns Compiled JavaScript code
+   * @throws {Error} If compilation fails
+   *
+   * @example
+   * ```typescript
+   * const compiler = new TypeScriptCompiler();
+   * const js = compiler.compile('const x: number = 42;', 'example.ts');
+   * console.log(js); // Output: const x = 42;
+   * ```
    */
   compile(code: string, filename: string): string {
     logger.debug(`Compiling ${filename}`);
@@ -113,11 +148,20 @@ export class TypeScriptCompiler {
 
   /**
    * Validate TypeScript types
-   * Note: 'transpileModule' is isolated (single file). 
+   * Note: 'transpileModule' is isolated (single file).
    * For full type checking across dependencies, a ts.Program is required.
    * This implementation checks for syntactic correctness and basic usage.
-   * * @param code TypeScript code
-   * @returns Type check result
+   * @param code - TypeScript source code to validate
+   * @returns Type check result with errors and warnings
+   *
+   * @example
+   * ```typescript
+   * const compiler = new TypeScriptCompiler({ strict: true });
+   * const result = compiler.validateTypes('const x: number = "wrong";');
+   * if (!result.valid) {
+   *   console.error('Errors:', result.errors);
+   * }
+   * ```
    */
   validateTypes(code: string): TypeCheckResult {
     const errors: string[] = [];
@@ -163,7 +207,8 @@ export class TypeScriptCompiler {
   }
 
   /**
-   * Get compiler options
+   * Get current compiler options
+   * @returns Current compiler options
    */
   getCompilerOptions(): CompilerOptions {
     // Map back to the simple interface for the getter
@@ -181,7 +226,7 @@ export class TypeScriptCompiler {
 
   /**
    * Set compiler options
-   * @param options Partial options to merge
+   * @param options - Partial options to merge with existing options
    */
   setCompilerOptions(options: Partial<CompilerOptions>): void {
     const newOptions = {

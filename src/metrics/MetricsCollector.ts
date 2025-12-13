@@ -1,5 +1,8 @@
 /**
- * @fileoverview Metrics collection and aggregation
+ * @file src/metrics/MetricsCollector.ts
+ * @description Metrics collection and aggregation for execution monitoring
+ * @since 1.0.0
+ * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
 import { EventEmitter } from '../utils/EventEmitter.js';
@@ -40,7 +43,34 @@ export interface GlobalMetrics {
 }
 
 /**
- * Collects execution metrics
+ * @class MetricsCollector
+ * Collects and aggregates execution metrics across multiple runs.
+ * Tracks success rates, timing, memory usage, and error patterns.
+ *
+ * @example
+ * ```typescript
+ * // Create collector
+ * const collector = new MetricsCollector();
+ *
+ * // Record execution
+ * collector.recordExecution({
+ *   duration: 150,
+ *   cpuTime: 145,
+ *   memory: { heap: 1024000, external: 512, rss: 2048000 },
+ *   success: true,
+ *   timestamp: Date.now()
+ * });
+ *
+ * // Get metrics
+ * const metrics = collector.getMetrics();
+ * console.log(`Success rate: ${(1 - metrics.errorRate) * 100}%`);
+ * console.log(`Avg execution time: ${metrics.avgExecutionTime}ms`);
+ *
+ * // Listen to events
+ * collector.on('metrics:recorded', (metrics) => {
+ *   console.log('New execution recorded:', metrics);
+ * });
+ * ```
  */
 export class MetricsCollector {
   private totalExecutions = 0;
@@ -53,6 +83,9 @@ export class MetricsCollector {
   private errorCounts: Map<string, number> = new Map();
   private eventEmitter: EventEmitter;
 
+  /**
+   * Create a new metrics collector
+   */
   constructor() {
     this.eventEmitter = new EventEmitter();
     logger.debug('MetricsCollector initialized');
@@ -60,7 +93,18 @@ export class MetricsCollector {
 
   /**
    * Record execution metrics
-   * @param metrics Execution metrics
+   * @param metrics - Execution metrics to record
+   *
+   * @example
+   * ```typescript
+   * collector.recordExecution({
+   *   duration: 100,
+   *   cpuTime: 95,
+   *   memory: { heap: 1000000, external: 0, rss: 2000000 },
+   *   success: true,
+   *   timestamp: Date.now()
+   * });
+   * ```
    */
   recordExecution(metrics: ExecutionMetrics): void {
     this.totalExecutions++;
@@ -98,8 +142,8 @@ export class MetricsCollector {
   }
 
   /**
-   * Get current metrics
-   * @returns Global metrics
+   * Get current metrics summary
+   * @returns Global metrics including totals, averages, and error analysis
    */
   getMetrics(): GlobalMetrics {
     const avgTime =
@@ -129,7 +173,8 @@ export class MetricsCollector {
 
   /**
    * Get execution history
-   * @param limit Number of recent executions to return
+   * @param limit - Number of recent executions to return (default: 10)
+   * @returns Array of most recent execution metrics
    */
   getExecutionHistory(limit: number = 10): ExecutionMetrics[] {
     return this.executionHistory.slice(-limit);
@@ -177,7 +222,7 @@ export class MetricsCollector {
   }
 
   /**
-   * Reset metrics
+   * Reset all metrics and history
    */
   reset(): void {
     this.totalExecutions = 0;
