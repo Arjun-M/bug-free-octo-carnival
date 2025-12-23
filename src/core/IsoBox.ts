@@ -29,6 +29,7 @@ import { ModuleSystem } from '../modules/ModuleSystem.js';
 import { ProjectLoader } from '../project/ProjectLoader.js';
 import { SessionManager, type SessionInfo } from '../session/SessionManager.js';
 import { logger } from '../utils/Logger.js';
+import { Timer } from '../utils/Timer.js';
 
 /**
  * IsoBox - A secure, isolated sandbox for executing untrusted JavaScript/TypeScript code.
@@ -237,8 +238,10 @@ export class IsoBox {
 
     try {
       if (this.isolatePool) {
+        const timer = new Timer().start();
         result = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
-        execResult = { value: result, duration: opts.timeout ?? this.timeout, cpuTime: 0 };
+        const duration = timer.stop();
+        execResult = { value: result, duration, cpuTime: 0 };
       } else {
         const { isolate: newIsolate } = this.isolateManager.create({
           memoryLimit: this.memoryLimit,
@@ -259,6 +262,7 @@ export class IsoBox {
 
         // MAJOR FIX: Proper context injection with correct type handling
         if (contextObj._globals) {
+          const failedGlobals: string[] = [];
           for (const key of Object.keys(contextObj._globals)) {
             const value = contextObj._globals[key];
             try {
@@ -269,12 +273,11 @@ export class IsoBox {
                 global.setSync(key, callback);
               } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
                 // For objects, check if they have methods
-                const hasNonFunctions = Object.values(value).some(v => typeof v !== 'function');
                 const hasFunctions = Object.values(value).some(v => typeof v === 'function');
 
                 if (hasFunctions) {
                   // Create empty ref and populate with mixed content
-                  const ref = context.evalClosureSync('() => ({})', [], { result: { reference: true } });
+                  const ref = context.evalSync('({})', { reference: true });
                   global.setSync(key, ref);
 
                   for (const prop of Object.keys(value)) {
@@ -297,8 +300,8 @@ export class IsoBox {
                       logger.warn(`Failed to inject property '${key}.${prop}': ${e instanceof Error ? e.message : String(e)}`);
                     }
                   }
-                } else if (hasNonFunctions) {
-                  // Pure data object
+                } else {
+                  // Pure data object (or empty object)
                   global.setSync(key, value, { copy: true });
                 }
               } else if (Array.isArray(value)) {
@@ -309,7 +312,16 @@ export class IsoBox {
               }
             } catch (e) {
               logger.warn(`Failed to inject global '${key}': ${e instanceof Error ? e.message : String(e)}`);
+              failedGlobals.push(key);
             }
+          }
+
+          if (failedGlobals.length > 0) {
+            throw new SandboxError(
+              `Failed to inject globals: ${failedGlobals.join(', ')}`,
+              'INJECTION_ERROR',
+              { failedGlobals }
+            );
           }
         }
 
