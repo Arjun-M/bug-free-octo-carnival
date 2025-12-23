@@ -18,22 +18,23 @@
     "README.md",
     "LICENSE"
   ],
-      "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "type-check": "tsc --noEmit",
-        "lint": "eslint src --fix",
-        "format": "prettier --write 'src/**/*.ts'",
-        "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-        "test:watch": "npm run test -- --watch"
-      },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --fix",
+    "format": "prettier --write 'src/**/*.ts'",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "npm run test -- --watch"
+  },
   "keywords": [
     "sandbox",
     "javascript",
     "typescript",
     "security",
     "isolate",
-    "vm", "vm2",
+    "vm",
+    "vm2",
     "isolated-vm",
     "ai-sandbox",
     "untrusted-code"

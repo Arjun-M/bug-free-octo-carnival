@@ -13,8 +13,9 @@ import { logger } from '../utils/Logger.js';
  * @callback OutputCallback
  * @param type - Output type ('log', 'error', 'warn', 'info', 'debug')
  * @param message - Formatted message string
+ * @param args - Original arguments passed to console method
  */
-export type OutputCallback = (type: string, message: string) => void;
+export type OutputCallback = (type: string, message: string, args?: any[]) => void;
 
 /**
  * Console handling modes.
@@ -73,7 +74,7 @@ export class ConsoleHandler {
       else if (type === 'warn') console.warn(message);
       else console.log(message);
     } else if (this.mode === 'redirect') {
-      this.onOutput?.(type, message);
+      this.onOutput?.(type, message, args);
       this.buffer.push({ type, message });
     }
   }

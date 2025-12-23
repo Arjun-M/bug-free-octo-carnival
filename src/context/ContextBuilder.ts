@@ -13,6 +13,7 @@ import { EnvHandler } from './EnvHandler.js';
 import { MemFS } from '../filesystem/MemFS.js';
 import { ModuleSystem } from '../modules/ModuleSystem.js';
 import { logger } from '../utils/Logger.js';
+import ivm from 'isolated-vm';
 
 /**
  * Builds execution contexts for isolated-vm with injected APIs and globals.
@@ -62,12 +63,14 @@ export class ContextBuilder {
     this.moduleSystem = options.moduleSystem ?? null;
 
     const consoleMode: ConsoleMode = options.console?.mode ?? 'inherit';
-    // Fix callback signature mismatch: ConsoleHandler expects (type: string, msg: string), but onOutput in types.ts is (level, args)
+
+    // Fix: Pass original arguments to onOutput callback if available
     const onOutputAdapter = options.console?.onOutput
-      ? (type: string, message: string) => {
+      ? (type: string, message: string, args?: any[]) => {
           // Map type string to allowed levels
           const level = (['log', 'warn', 'error', 'info'].includes(type) ? type : 'log') as 'log' | 'warn' | 'error' | 'info';
-          options.console!.onOutput!(level, [message]);
+          // Use original args if available, otherwise wrap message
+          options.console!.onOutput!(level, args || [message]);
       }
       : undefined;
 
@@ -159,9 +162,13 @@ export class ContextBuilder {
     const memfs = this.memfs;
 
     const fs_obj = {
-      // MAJOR FIX: Removed .toString() to allow binary data transfer (Buffer is copied by ivm)
+      // MAJOR FIX: Removed .toString() to allow binary data transfer
       write: (path: string, content: string | Buffer) => memfs.write(path, content),
-      read: (path: string) => memfs.read(path),
+      // MAJOR FIX: Use ivm.ExternalCopy for safe Buffer transfer across boundary
+      read: (path: string) => {
+        const buffer = memfs.read(path);
+        return new ivm.ExternalCopy(buffer).copyInto();
+      },
       exists: (path: string) => memfs.exists(path),
       readdir: (path: string) => memfs.readdir(path),
       mkdir: (path: string, recursive?: boolean) => memfs.mkdir(path, recursive),
