@@ -96,9 +96,10 @@ export class ContextBuilder {
    * injection into isolated-vm Context happens elsewhere (e.g., ExecutionContext).
    *
    * @param isolateId - Unique identifier for the isolate
+   * @param ivmContext - Optional isolate context (required for virtual module loading)
    * @returns Context object with _globals containing all APIs
    */
-  async build(isolateId: string): Promise<Record<string, any>> {
+  async build(isolateId: string, ivmContext?: ivm.Context): Promise<Record<string, any>> {
     const context: Record<string, any> = {
       isolateId,
       _globals: {},
@@ -117,7 +118,7 @@ export class ContextBuilder {
     }
 
     if (this.options.require) {
-      await this.injectRequire(context);
+      await this.injectRequire(context, ivmContext);
     }
 
     if (Object.keys(this.sandbox).length > 0) {
@@ -187,14 +188,62 @@ export class ContextBuilder {
     context._globals.$fs = fs_obj;
   }
 
-  private async injectRequire(context: Record<string, any>): Promise<void> {
+  private async injectRequire(context: Record<string, any>, ivmContext?: ivm.Context): Promise<void> {
     if (!this.moduleSystem) return;
 
     const moduleSystem = this.moduleSystem;
+
+    // Executor for virtual modules: runs code in the VM
+    let executor: ((code: string, filename: string) => any) | undefined;
+
+    if (ivmContext) {
+      executor = (code: string, filename: string) => {
+        // Wrap in CommonJS function
+        // (exports, require, module, __filename, __dirname)
+        const wrapped = `(function(exports, require, module, __filename, __dirname) { ${code} \n})`;
+
+        // Compile the wrapped code to get a function reference
+        const script = ivmContext.evalSync(wrapped, { filename, reference: true });
+
+        // Use a runner helper in the VM to setup the module environment and execute the script
+        const runner = ivmContext.evalSync(`
+          (function(moduleFn, filename, requireFn) {
+            const exports = {};
+            const module = { exports: exports };
+            const __filename = filename;
+            const __dirname = filename.split('/').slice(0, -1).join('/') || '/';
+
+            // Execute the compiled module function
+            moduleFn.apply(undefined, [module.exports, requireFn, module, __filename, __dirname]);
+            return module.exports;
+          })
+        `, { reference: true });
+
+        // Create scoped require function
+        const scopedRequire = new ivm.Callback((id: string) => {
+             // Resolve relative to current file
+             const fromPath = filename;
+             return moduleSystem.require(id, fromPath, executor);
+        });
+
+        try {
+            // Execute runner with the compiled script reference
+            return runner.applySync(undefined, [script, filename, scopedRequire], { result: { copy: true, reference: false } });
+        } finally {
+            scopedRequire.dispose();
+            runner.dispose();
+            script.release();
+        }
+      };
+    }
+
     // MAJOR FIX: The require function should only take moduleName in sandbox context.
     // The fromPath should default to '/' since modules are loaded from MemFS root.
     const require_fn = (moduleName: string) => {
-      return moduleSystem.require(moduleName, '/');
+      // If we have an executor (context available), use it.
+      // If not (e.g. initial build without context), it might fail for virtual modules.
+      // But we plan to pass context to build().
+      return moduleSystem.require(moduleName, '/', executor);
     };
 
     context._globals.require = require_fn;
