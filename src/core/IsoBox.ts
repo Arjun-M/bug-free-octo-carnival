@@ -238,10 +238,9 @@ export class IsoBox {
 
     try {
       if (this.isolatePool) {
-        const timer = new Timer().start();
-        result = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
-        const duration = timer.stop();
-        execResult = { value: result, duration, cpuTime: 0 };
+        // Pool execution now returns full ExecutionResult
+        execResult = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
+        result = execResult.value;
       } else {
         const { isolate: newIsolate } = this.isolateManager.create({
           memoryLimit: this.memoryLimit,

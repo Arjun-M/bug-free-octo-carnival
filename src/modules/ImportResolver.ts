@@ -87,7 +87,10 @@ export class ImportResolver {
 
     // Try exact match first
     if (this.memfs.exists(resolved)) {
-      return resolved;
+      const stat = this.memfs.stat(resolved);
+      if (!stat.isDirectory) {
+        return resolved;
+      }
     }
 
     // Try with extensions
@@ -121,7 +124,10 @@ export class ImportResolver {
   private resolveAbsolute(specifier: string): string {
     // Try exact match first
     if (this.memfs.exists(specifier)) {
-      return specifier;
+      const stat = this.memfs.stat(specifier);
+      if (!stat.isDirectory) {
+        return specifier;
+      }
     }
 
     // Try with extensions
