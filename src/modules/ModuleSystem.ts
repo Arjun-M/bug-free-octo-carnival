@@ -82,17 +82,29 @@ export class ModuleSystem {
    *
    * @param moduleName - Module specifier (e.g., 'lodash', './utils', '/src/file')
    * @param fromPath - Path of the requiring module (default: '/')
+   * @param executor - Optional callback to execute module code in the VM
    * @returns Loaded module exports
    * @throws {SandboxError} CIRCULAR_DEPENDENCY if circular dependency detected
    * @throws {SandboxError} MODULE_NOT_ALLOWED if built-in module not allowed
    * @throws {SandboxError} MODULE_NOT_WHITELISTED if external module not whitelisted
    * @throws {SandboxError} MODULE_LOAD_ERROR if loading fails
    */
-  require(moduleName: string, fromPath: string = '/'): any {
+  require(moduleName: string, fromPath: string = '/', executor?: (code: string, filename: string) => any): any {
     logger.debug(`require('${moduleName}') from ${fromPath}`);
 
     if (this.isMocked(moduleName)) {
       return this.mocks.get(moduleName);
+    }
+
+    // Fix for built-in module resolution: check built-in first
+    if (this.isBuiltin(moduleName)) {
+        if (!this.allowBuiltins) {
+          throw new SandboxError(
+            `Built-in not allowed: ${moduleName}`,
+            'MODULE_NOT_ALLOWED'
+          );
+        }
+        return this.loadBuiltin(moduleName);
     }
 
     // CRITICAL FIX: The cache key must be the resolved path, not the original moduleName.
@@ -105,8 +117,9 @@ export class ModuleSystem {
 
     // Cycle detection
     const stack = this.circularDeps.getStack();
-    if (this.circularDeps.detectCircular(moduleName, stack)) {
-      const circlePath = this.circularDeps.getCircularPath(moduleName, stack);
+    // MAJOR FIX: Use resolvedPath for circular dependency detection
+    if (this.circularDeps.detectCircular(resolvedPath, stack)) {
+      const circlePath = this.circularDeps.getCircularPath(resolvedPath, stack);
       throw new SandboxError(
         `Circular dependency: ${circlePath?.join(' -> ')}`,
         'CIRCULAR_DEPENDENCY',
@@ -122,15 +135,7 @@ export class ModuleSystem {
       // CRITICAL FIX: All local/relative modules should be loaded via loadVirtual.
       // The check for built-in and whitelisted modules should only apply to bare specifiers.
       if (moduleName.startsWith('.') || moduleName.startsWith('/')) {
-        module = this.loadVirtual(resolvedPath);
-      } else if (this.isBuiltin(moduleName)) {
-        if (!this.allowBuiltins) {
-          throw new SandboxError(
-            `Built-in not allowed: ${moduleName}`,
-            'MODULE_NOT_ALLOWED'
-          );
-        }
-        module = this.loadBuiltin(moduleName);
+        module = this.loadVirtual(resolvedPath, executor);
       } else if (this.isWhitelisted(moduleName)) {
         module = this.loadExternal(moduleName);
       } else {
@@ -197,32 +202,40 @@ export class ModuleSystem {
   /**
    * Load a module from the virtual filesystem.
    *
-   * Currently not fully implemented as it requires VM-side code execution.
-   * Virtual modules must be executed within the isolate context.
-   *
    * @param path - Absolute path to module in virtual filesystem
+   * @param executor - Function to execute code in the VM
    * @returns Module exports
-   * @throws {SandboxError} MODULE_LOAD_UNIMPLEMENTED - feature not yet implemented
+   * @throws {SandboxError} MODULE_LOAD_UNIMPLEMENTED if executor not provided
    * @throws {SandboxError} MODULE_LOAD_ERROR if loading fails
    */
-  private loadVirtual(path: string): any {
+  private loadVirtual(path: string, executor?: (code: string, filename: string) => any): any {
     try {
       const code = this.memfs.read(path).toString();
 
-      // CRITICAL: Virtual module loading requires code execution within the VM context.
-      // The ModuleSystem cannot execute code by itself (host security risk).
-      // 
-      // Solution options:
-      // 1. Pass an executor function from IsoBox that runs code in the VM
-      // 2. Use a callback-based approach for module instantiation
-      // 3. Store code and defer execution to the VM (lazy loading)
-      //
-      // For now, throw an explicit error indicating this isn't supported:
-      throw new SandboxError(
-        `Virtual module loading not yet implemented. Module path: ${path}`,
-        'MODULE_LOAD_UNIMPLEMENTED',
-        { path, message: 'Virtual modules require VM-side code execution' }
-      );
+      if (!executor) {
+        throw new SandboxError(
+          `Virtual module loading requires an executor. Module path: ${path}`,
+          'MODULE_LOAD_UNIMPLEMENTED',
+          { path, message: 'Virtual modules require VM-side code execution' }
+        );
+      }
+
+      // Wrap code in CommonJS wrapper
+      // We rely on the executor (run in sandbox) to provide 'exports', 'require', 'module', etc.
+      // But actually, we usually compile the code as a function: (exports, require, module, __filename, __dirname) => { ... }
+      // The executor should likely take the raw code and handle wrapping/execution.
+      // However, to support 'exports', we need to create the module object HERE (or in the executor).
+      // If we do it here (Host), we can control it. But 'exports' needs to be an object in the VM.
+
+      // Better approach: Pass the code to executor. The executor (in ContextBuilder) will:
+      // 1. Wrap the code: `(function(exports, require, module, __filename, __dirname) { ${code} \n})`
+      // 2. Compile and run it to get the function.
+      // 3. Create 'module' = { exports: {} }
+      // 4. Call function(module.exports, require, module, filename, dirname)
+      // 5. Return module.exports
+
+      // So here we just pass the code to the executor.
+      return executor(code, path);
 
     } catch (error) {
       if (error instanceof SandboxError) throw error;
@@ -260,7 +273,29 @@ export class ModuleSystem {
       },
       // MAJOR FIX: Buffer must be exported as a property of the module object
       buffer: {
-        Buffer: Buffer, // Now accessible as require('buffer').Buffer or const { Buffer } = require('buffer')
+        // SECURITY FIX: Do not expose raw Host Buffer constructor.
+        // Instead, provide a safe wrapper or rely on the environment's Buffer if available (which might be polyfilled).
+        // Since we are running in isolated-vm, we might not have a full Buffer implementation inside.
+        // However, exposing Host Buffer allows access to uninitialized memory via allocUnsafe.
+        // We will provide a safe proxy that disables unsafe methods.
+        Buffer: new Proxy(Buffer, {
+            get(target, prop, receiver) {
+                if (prop === 'allocUnsafe' || prop === 'allocUnsafeSlow') {
+                    // Redirect unsafe allocation to safe allocation
+                    return (size: number) => Buffer.alloc(size);
+                }
+                return Reflect.get(target, prop, receiver);
+            },
+            construct(target, args) {
+                // Buffer.from() is preferred over new Buffer()
+                // But for compatibility we allow new Buffer, but we ensure it doesn't use unsafe allocation if arguments allow it?
+                // actually new Buffer(number) is unsafe.
+                if (args.length === 1 && typeof args[0] === 'number') {
+                     return Buffer.alloc(args[0]);
+                }
+                return Reflect.construct(target, args);
+            }
+        }),
       },
       stream: {
         Readable: class {},

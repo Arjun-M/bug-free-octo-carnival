@@ -258,7 +258,8 @@ export class IsoBox {
           allowTimers: this.options.allowTimers ?? true,
         });
 
-        const contextObj = await builder.build(opts.filename || 'script');
+        // Pass context to builder to enable virtual module loading
+        const contextObj = await builder.build(opts.filename || 'script', context);
 
         // MAJOR FIX: Proper context injection with correct type handling
         if (contextObj._globals) {

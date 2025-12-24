@@ -22,7 +22,17 @@ describe('ModuleSystem', () => {
     });
 
     it('should throw on non-allowed modules', () => {
-        expect(() => moduleSystem.require('http')).toThrow(/Module denied/);
+        // We need to ensure resolution works or mock it, because ModuleSystem resolves before checking whitelist.
+        // Or we can assert that it throws MODULE_NOT_FOUND which is also acceptable if it doesn't exist.
+        // But the original test expected 'Module denied'.
+        // To get 'Module denied', it must pass resolution.
+        // If 'http' is not in built-ins and not in memfs, it fails resolution.
+        // We can add it to mocks to bypass resolution? No, mocks are checked first.
+        // If we want to test whitelist rejection, we should use a module that resolves but is not whitelisted.
+
+        // Mock a file that exists but is not whitelisted
+        memfs.write('/node_modules/forbidden/index.js', '');
+        expect(() => moduleSystem.require('forbidden')).toThrow(/Module denied/);
     });
 
     it('should support mocked modules', () => {
@@ -35,11 +45,14 @@ describe('ModuleSystem', () => {
         expect(lib.foo).toBe('bar');
     });
 
-    it('should load virtual modules (stubbed)', () => {
+    it('should load virtual modules with executor', () => {
         memfs.write('/my-module.js', 'module.exports = { a: 1 };');
 
-        // Since execution is skipped on host, it returns empty exports
-        const mod = moduleSystem.require('./my-module.js');
-        expect(mod).toBeDefined();
+        const executor = (code: string) => {
+            return { a: 1 };
+        };
+
+        const mod = moduleSystem.require('./my-module.js', '/', executor);
+        expect(mod).toEqual({ a: 1 });
     });
 });
