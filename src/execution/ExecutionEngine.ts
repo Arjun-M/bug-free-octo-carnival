@@ -213,7 +213,8 @@ export class ExecutionEngine {
     context: Context,
     options: ExecuteOptions
   ): Promise<ExecutionResult<T>> {
-    const code = compiled.getSource();
+    // FIX: Use compiled JS code instead of source (which might be TS)
+    const code = compiled.getCompiled();
     // The isolate must be passed explicitly to executeScript, as a Context does not
     // necessarily hold a reference to its parent Isolate.
     return this.execute(code, isolate, context, options);

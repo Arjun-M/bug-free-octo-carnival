@@ -51,6 +51,7 @@ export class ContextBuilder {
   private moduleSystem: ModuleSystem | null;
   private sandbox: Record<string, any>;
   private options: IsoBoxOptions;
+  private disposables: (() => void)[] = [];
 
   constructor(
     options: IsoBoxOptions & {
@@ -226,11 +227,18 @@ export class ContextBuilder {
              return moduleSystem.require(id, fromPath, executor);
         });
 
+        // Track scopedRequire for later disposal instead of immediate disposal
+        this.disposables.push(() => {
+          try {
+            scopedRequire.dispose();
+          } catch (e) { /* ignore */ }
+        });
+
         try {
             // Execute runner with the compiled script reference
             return runner.applySync(undefined, [script, filename, scopedRequire], { result: { copy: true, reference: false } });
         } finally {
-            scopedRequire.dispose();
+            // scopedRequire.dispose(); // MOVED to disposables
             runner.dispose();
             script.release();
         }
@@ -306,5 +314,11 @@ export class ContextBuilder {
     if (this.globalsInjector) {
       this.globalsInjector.dispose();
     }
+
+    // Dispose of all tracked resources
+    for (const dispose of this.disposables) {
+      dispose();
+    }
+    this.disposables = [];
   }
 }

@@ -72,6 +72,7 @@ export class ConsoleHandler {
     if (this.mode === 'inherit') {
       if (type === 'error') console.error(message);
       else if (type === 'warn') console.warn(message);
+      else if (type === 'info') console.info(message); // Fix: Handle info explicitly
       else console.log(message);
     } else if (this.mode === 'redirect') {
       this.onOutput?.(type, message, args);

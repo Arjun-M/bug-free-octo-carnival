@@ -37,9 +37,9 @@ export class IsolateManager {
     const isolateOptions: ivm.IsolateOptions = {};
     if (options?.memoryLimit) {
       // isolated-vm expects memoryLimit in MB
-      // MAJOR FIX: Ensure memoryLimit is converted from bytes to MB and is at least 8MB
+      // MAJOR FIX: Ensure memoryLimit is converted from bytes to MB and is at least 10MB
       isolateOptions.memoryLimit = Math.max(
-        8,
+        10,
         Math.ceil(options.memoryLimit / (1024 * 1024))
       );
     }

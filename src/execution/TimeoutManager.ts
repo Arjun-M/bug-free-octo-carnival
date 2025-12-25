@@ -219,8 +219,14 @@ export class TimeoutManager {
     try {
       // isolated-vm exposes cpuTime in nanoseconds as BigInt
       const cpuTimeNs = (isolate as any).cpuTime;
-      const val = typeof cpuTimeNs === 'bigint' ? Number(cpuTimeNs) : (Number(cpuTimeNs) || 0);
-      return val / 1e6; // Convert ns to ms
+      // FIX: Handle both BigInt and [seconds, nanoseconds] format (older versions)
+      if (typeof cpuTimeNs === 'bigint') {
+          return Number(cpuTimeNs) / 1e6;
+      } else if (Array.isArray(cpuTimeNs) && cpuTimeNs.length === 2) {
+          // [seconds, nanoseconds]
+          return (cpuTimeNs[0] * 1000) + (cpuTimeNs[1] / 1e6);
+      }
+      return 0;
     } catch {
       return 0;
     }
