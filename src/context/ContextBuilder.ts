@@ -230,16 +230,18 @@ export class ContextBuilder {
         // Track scopedRequire for later disposal instead of immediate disposal
         this.disposables.push(() => {
           try {
-            scopedRequire.dispose();
+            // Use release() for ivm.Reference/Callback
+            (scopedRequire as any).release();
           } catch (e) { /* ignore */ }
         });
 
         try {
             // Execute runner with the compiled script reference
-            return runner.applySync(undefined, [script, filename, scopedRequire], { result: { copy: true, reference: false } });
+            // Cast options to any to avoid strict type issues with reference: false if types are mismatching
+            return runner.applySync(undefined, [script, filename, scopedRequire], { result: { copy: true, reference: false } } as any);
         } finally {
             // Callback lifecycle managed by disposables
-            runner.dispose();
+            runner.release();
             script.release();
         }
       };

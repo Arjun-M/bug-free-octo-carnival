@@ -107,10 +107,12 @@ export class PooledIsolate {
 
   dispose(): void {
     try {
-      if (!this.context.release) {
-        // Already released?
-      } else {
+      // Check if the context is already released using a try-catch block
+      // .release() throws if already released, so we catch that specific error
+      try {
         this.context.release();
+      } catch (e) {
+        // Context might be already released or isolate is disposed
       }
 
       if (!this.isolate.isDisposed) {

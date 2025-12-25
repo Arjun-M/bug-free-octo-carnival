@@ -219,13 +219,20 @@ export class TimeoutManager {
     try {
       // isolated-vm exposes cpuTime in nanoseconds as BigInt
       const cpuTimeNs = (isolate as any).cpuTime;
-      // FIX: Handle both BigInt and [seconds, nanoseconds] format (older versions)
+
+      // Handle array format [seconds, nanoseconds] which is standard in recent isolated-vm
+      if (Array.isArray(cpuTimeNs) && cpuTimeNs.length === 2) {
+          // Need to handle BigInts in the array
+          const seconds = Number(cpuTimeNs[0]);
+          const nanoseconds = Number(cpuTimeNs[1]);
+          return (seconds * 1000) + (nanoseconds / 1e6);
+      }
+
+      // Fallback for BigInt format if ever used
       if (typeof cpuTimeNs === 'bigint') {
           return Number(cpuTimeNs) / 1e6;
-      } else if (Array.isArray(cpuTimeNs) && cpuTimeNs.length === 2) {
-          // [seconds, nanoseconds]
-          return (cpuTimeNs[0] * 1000) + (cpuTimeNs[1] / 1e6);
       }
+
       return 0;
     } catch {
       return 0;

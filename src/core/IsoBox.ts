@@ -29,7 +29,6 @@ import { ModuleSystem } from '../modules/ModuleSystem.js';
 import { ProjectLoader } from '../project/ProjectLoader.js';
 import { SessionManager, type SessionInfo } from '../session/SessionManager.js';
 import { logger } from '../utils/Logger.js';
-import { Timer } from '../utils/Timer.js';
 
 /**
  * IsoBox - A secure, isolated sandbox for executing untrusted JavaScript/TypeScript code.
@@ -279,9 +278,7 @@ export class IsoBox {
              // console.log(`Injecting ${key} into target`, value);
              if (value === null || value === undefined) {
                  // Try setting directly (might fail if key is numeric string for array, but generally safe)
-                 try {
-                     target.setSync(key, value);
-                 } catch (e) { /* ignore */ }
+                 target.setSync(key, value);
                  return;
              }
 
@@ -322,12 +319,7 @@ export class IsoBox {
                      }
                  } else {
                      // Pure data, safe to copy
-                     try {
-                        target.setSync(key, value, { copy: true });
-                     } catch(e) {
-                         // Fallback
-                         target.setSync(key, String(value), { copy: true });
-                     }
+                     target.setSync(key, value, { copy: true });
                  }
                  return;
              }
@@ -383,7 +375,7 @@ export class IsoBox {
 
       // CRITICAL FIX: Check if execResult is defined before accessing properties
       if (execResult) {
-        this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.memoryUsed ?? 0);
+        this.recordMetrics(execResult.duration, execResult.cpuTime, execResult.resourceStats?.peakTotalMemory ?? 0);
 
         this.emit('execution', {
           type: 'complete',
@@ -422,7 +414,9 @@ export class IsoBox {
       // Dispose of all ivm.Callback objects to prevent memory leaks
       for (const callback of callbacks) {
         try {
-          callback.dispose();
+          // ivm.Callback inherits from ivm.Reference which has release()
+          // We cast to any if the type definition is missing dispose/release on Callback specifically
+          (callback as any).release();
         } catch (err) {
           // Ignore errors if already disposed
         }
