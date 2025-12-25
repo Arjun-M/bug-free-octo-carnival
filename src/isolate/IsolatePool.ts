@@ -7,6 +7,7 @@
 
 import type { PoolOptions } from '../core/types.js';
 import { SandboxError } from '../core/types.js';
+import type { ExecutionResult } from '../execution/ExecutionEngine.js';
 import { PooledIsolate } from './PooledIsolate.js';
 import { PoolStatsTracker, type PoolStats } from './PoolStats.js';
 import { AsyncQueue } from '../utils/AsyncQueue.js';
@@ -139,11 +140,13 @@ export class IsolatePool {
   /**
    * Run code in a pooled isolate.
    */
-  async execute<T = any>(code: string, options: { timeout?: number } = {}): Promise<T> {
+  async execute<T = any>(code: string, options: { timeout?: number } = {}): Promise<ExecutionResult<T>> {
     this.ensureNotDisposed();
 
     const pooledIsolate = await this.acquire();
     const start = Date.now();
+    let cpuTime = 0;
+    let resourceStats;
 
     try {
       // Execute within the pooled context
@@ -153,9 +156,30 @@ export class IsolatePool {
         promise: true,
       });
 
+      // Try to get CPU time and memory stats
+      try {
+        const [cpuSeconds, cpuNanoseconds] = pooledIsolate.isolate.cpuTime;
+        cpuTime = (cpuSeconds * 1000) + (cpuNanoseconds / 1e6);
+
+        // Simple snapshot of memory
+        const heap = await pooledIsolate.isolate.getHeapStatistics();
+        resourceStats = {
+          memoryUsed: heap.total_heap_size,
+          cpuTime
+        };
+      } catch (e) {
+        // Ignore stats errors
+      }
+
       const duration = Date.now() - start;
       this.stats.recordExecution(duration);
-      return result as T;
+
+      return {
+        value: result as T,
+        duration,
+        cpuTime,
+        resourceStats
+      };
     } catch (error) {
       this.stats.recordError();
       pooledIsolate.setUnhealthy();

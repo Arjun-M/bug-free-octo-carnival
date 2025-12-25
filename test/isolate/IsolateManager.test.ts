@@ -14,16 +14,14 @@ describe('IsolateManager', () => {
     });
 
     it('should create and track isolates', () => {
-        const isolate = manager.create({ memoryLimit: 128 });
+        const { isolate } = manager.create({ memoryLimit: 128 * 1024 * 1024 });
         const stats = manager.getStats();
         expect(stats.active).toBe(1);
         expect(isolate).toBeInstanceOf(ivm.Isolate);
     });
 
     it('should dispose specific isolate', () => {
-        const isolate = manager.create();
-        const map = (manager as any).isolates as Map<string, any>;
-        const id = map.keys().next().value;
+        const { id, isolate } = manager.create();
 
         manager.dispose(id);
         expect(manager.getStats().active).toBe(0);
