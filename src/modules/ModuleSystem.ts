@@ -274,28 +274,29 @@ export class ModuleSystem {
       // MAJOR FIX: Buffer must be exported as a property of the module object
       buffer: {
         // SECURITY FIX: Do not expose raw Host Buffer constructor.
-        // Instead, provide a safe wrapper or rely on the environment's Buffer if available (which might be polyfilled).
-        // Since we are running in isolated-vm, we might not have a full Buffer implementation inside.
-        // However, exposing Host Buffer allows access to uninitialized memory via allocUnsafe.
-        // We will provide a safe proxy that disables unsafe methods.
-        Buffer: new Proxy(Buffer, {
-            get(target, prop, receiver) {
-                if (prop === 'allocUnsafe' || prop === 'allocUnsafeSlow') {
-                    // Redirect unsafe allocation to safe allocation
-                    return (size: number) => Buffer.alloc(size);
-                }
-                return Reflect.get(target, prop, receiver);
-            },
-            construct(target, args) {
-                // Buffer.from() is preferred over new Buffer()
-                // But for compatibility we allow new Buffer, but we ensure it doesn't use unsafe allocation if arguments allow it?
-                // actually new Buffer(number) is unsafe.
-                if (args.length === 1 && typeof args[0] === 'number') {
-                     return Buffer.alloc(args[0]);
-                }
-                return Reflect.construct(target, args);
-            }
-        }),
+        // Using a Proxy around the Host Buffer is insufficient because sophisticated attacks
+        // might access the constructor via prototypes or other means.
+        // We should prevent access to the Host Buffer entirely.
+        // For sandboxed code, we can provide a minimal safe implementation or just the static methods we want.
+        // However, providing a full Buffer polyfill is complex.
+        // For now, we EXPLICITLY disable access to the Host Buffer constructor.
+
+        // If the user code needs Buffer, it should rely on a polyfill injected into the environment
+        // or a safe subset. Here we provide a limited safe subset.
+
+        Buffer: {
+            isBuffer: (obj: any) => Buffer.isBuffer(obj),
+            from: (data: any, encoding?: BufferEncoding) => Buffer.from(data, encoding),
+            alloc: (size: number, fill?: any, encoding?: BufferEncoding) => Buffer.alloc(size, fill, encoding),
+            // Explicitly do NOT expose allocUnsafe
+            allocUnsafe: (size: number) => Buffer.alloc(size), // Fallback to safe alloc
+            allocUnsafeSlow: (size: number) => Buffer.alloc(size),
+            byteLength: (string: string, encoding?: BufferEncoding) => Buffer.byteLength(string, encoding),
+            concat: (list: Uint8Array[], totalLength?: number) => Buffer.concat(list, totalLength),
+            compare: (buf1: Uint8Array, buf2: Uint8Array) => Buffer.compare(buf1, buf2),
+            isEncoding: (encoding: string) => Buffer.isEncoding(encoding),
+            // Do not provide constructor
+        }
       },
       stream: {
         Readable: class {},

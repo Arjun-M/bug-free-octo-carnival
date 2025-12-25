@@ -73,8 +73,8 @@ export class GlobalsInjector {
                   this.activeTimers.delete(id);
                   try {
                       // Call the function in the sandbox
-                      // Use apply for async execution to avoid blocking the host thread
-                      callback.apply(undefined, args);
+                      // Use applyIgnored for async execution to avoid blocking the host thread and ignoring result
+                      callback.applyIgnored(undefined, args);
                   } catch (e) {
                       // Isolate might be disposed
                   }
@@ -91,8 +91,8 @@ export class GlobalsInjector {
              const id = ++this.timerIdCounter;
              const timer = setInterval(() => {
                   try {
-                       // Use apply for async execution
-                       callback.apply(undefined, args);
+                       // Use applyIgnored for async execution
+                       callback.applyIgnored(undefined, args);
                   } catch (e) {
                       // Stop interval if execution fails (e.g. isolate disposed)
                       clearInterval(timer);

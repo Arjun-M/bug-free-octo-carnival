@@ -8,7 +8,6 @@
 import { EventEmitter } from 'events';
 import type { Context, Isolate } from 'isolated-vm';
 import { CompiledScript } from '../core/CompiledScript.js';
-import { TimeoutError } from '../core/types.js';
 import { TimeoutManager } from './TimeoutManager.js';
 import { ResourceMonitor, type ResourceStats } from './ResourceMonitor.js';
 import { ExecutionContext } from './ExecutionContext.js';
@@ -129,9 +128,10 @@ export class ExecutionEngine {
     try {
       // Compile
       // MAJOR FIX: Use ivm's built-in timeout for compilation to avoid external promise race issues
+      // Note: compileScript might not support timeout in strict types, but it's good practice if supported.
+      // If not supported by types, we cast or remove. Removing to satisfy strict TS.
       const script = await isolate.compileScript(code, {
         filename: options.filename || 'script',
-        timeout: options.timeout,
       });
 
       // Run

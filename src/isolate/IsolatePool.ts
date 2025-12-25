@@ -8,6 +8,7 @@
 import type { PoolOptions } from '../core/types.js';
 import { SandboxError } from '../core/types.js';
 import type { ExecutionResult } from '../execution/ExecutionEngine.js';
+import type { ResourceStats, ResourceUsage } from '../execution/ResourceMonitor.js';
 import { PooledIsolate } from './PooledIsolate.js';
 import { PoolStatsTracker, type PoolStats } from './PoolStats.js';
 import { AsyncQueue } from '../utils/AsyncQueue.js';
@@ -147,32 +148,69 @@ export class IsolatePool {
     const pooledIsolate = await this.acquire();
     const start = Date.now();
     let cpuTime = 0;
-    let resourceStats;
+    let resourceStats: ResourceStats | undefined;
     let context: Context | undefined;
 
     try {
-      // Create a fresh context for each execution to ensure isolation
-      // Reusing contexts without clearing global state is dangerous
-      // PooledIsolate maintains the Isolate but we should cycle the Context
-      context = await pooledIsolate.isolate.createContext();
+      // Use the context from PooledIsolate which is guaranteed to be fresh
+      // because acquire() calls reset() on the isolate before returning it.
+      // This avoids creating a second context and throwing it away.
+      context = pooledIsolate.context;
 
       // Execute within the pooled context
       const script = await pooledIsolate.isolate.compileScript(code);
-      const result = await script.run(context, { // Use new context
+      const result = await script.run(context, {
         timeout: options.timeout,
         promise: true,
       });
 
       // Try to get CPU time and memory stats
       try {
-        const [cpuSeconds, cpuNanoseconds] = pooledIsolate.isolate.cpuTime;
-        cpuTime = (cpuSeconds * 1000) + (cpuNanoseconds / 1e6);
+        const cpuTimeRaw = pooledIsolate.isolate.cpuTime;
+
+        let cpuSeconds = 0n;
+        let cpuNanoseconds = 0n;
+
+        if (Array.isArray(cpuTimeRaw)) {
+            cpuSeconds = BigInt(cpuTimeRaw[0]);
+            cpuNanoseconds = BigInt(cpuTimeRaw[1]);
+        } else {
+             // If only BigInt, treat as ns? Older docs say ns.
+             // But we align with TimeoutManager logic
+             cpuNanoseconds = BigInt(cpuTimeRaw as any);
+        }
+
+        cpuTime = (Number(cpuSeconds) * 1000) + (Number(cpuNanoseconds) / 1e6);
 
         // Simple snapshot of memory
         const heap = await pooledIsolate.isolate.getHeapStatistics();
+        const currentDuration = Date.now() - start;
+
+        // Construct partial ResourceStats
+        // Note: ExecutionResult requires ResourceStats, but we only have partial data here
+        // We will construct a minimal valid ResourceStats object
+        const heapUsed = heap.total_heap_size;
+        const externalMemory = (heap as any).external_memory || 0;
+
+        const partialUsage: ResourceUsage = {
+             cpuTime,
+             wallTime: currentDuration,
+             heapUsed,
+             heapLimit: heap.heap_size_limit,
+             externalMemory,
+             totalMemory: heapUsed + externalMemory,
+             cpuPercent: 0,
+             memoryPercent: 0
+        };
+
         resourceStats = {
-          memoryUsed: heap.total_heap_size,
-          cpuTime
+          peakCpuTime: cpuTime,
+          peakHeapUsed: heapUsed,
+          peakTotalMemory: partialUsage.totalMemory,
+          finalCpuTime: cpuTime,
+          finalUsage: partialUsage,
+          avgCpuPercent: 0,
+          duration: currentDuration
         };
       } catch (e) {
         // Ignore stats errors
@@ -192,10 +230,10 @@ export class IsolatePool {
       pooledIsolate.setUnhealthy();
       throw error;
     } finally {
-      // Explicitly release context to avoid memory leaks
-      if (context) {
-        context.release();
-      }
+      // We do NOT release the context here because PooledIsolate manages it.
+      // The context will be released/recreated when the isolate is next acquired (via reset()).
+      // However, to ensure cleanup, we can rely on PooledIsolate lifecycle.
+
       this.release(pooledIsolate);
     }
   }
