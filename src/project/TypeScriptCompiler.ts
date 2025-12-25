@@ -79,6 +79,19 @@ export class TypeScriptCompiler {
   }
 
   /**
+   * Static helper to transpile code without creating a persistent instance.
+   * Useful for quick transpilation where options are defaults.
+   *
+   * @param code - TypeScript code
+   * @param filename - Optional filename
+   * @returns Transpiled JavaScript code
+   */
+  static transpile(code: string, filename: string = 'script.ts'): string {
+    const compiler = new TypeScriptCompiler();
+    return compiler.compile(code, filename);
+  }
+
+  /**
    * Helper to map string target to ts.ScriptTarget enum
    */
   private mapTarget(target: string): ts.ScriptTarget {

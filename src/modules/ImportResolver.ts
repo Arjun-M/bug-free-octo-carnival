@@ -122,17 +122,21 @@ export class ImportResolver {
    * @returns Resolved path
    */
   private resolveAbsolute(specifier: string): string {
+    // FIX: Normalize absolute path before checking existence
+    // Use joinPaths with root '/' to normalize
+    const normalized = this.joinPaths('/', specifier);
+
     // Try exact match first
-    if (this.memfs.exists(specifier)) {
-      const stat = this.memfs.stat(specifier);
+    if (this.memfs.exists(normalized)) {
+      const stat = this.memfs.stat(normalized);
       if (!stat.isDirectory) {
-        return specifier;
+        return normalized;
       }
     }
 
     // Try with extensions
     for (const ext of this.extensions) {
-      const withExt = specifier + ext;
+      const withExt = normalized + ext;
       if (this.memfs.exists(withExt)) {
         return withExt;
       }
@@ -140,7 +144,7 @@ export class ImportResolver {
 
     // Try index files
     for (const ext of this.extensions) {
-      const indexFile = this.joinPaths(specifier, `index${ext}`);
+      const indexFile = this.joinPaths(normalized, `index${ext}`);
       if (this.memfs.exists(indexFile)) {
         return indexFile;
       }

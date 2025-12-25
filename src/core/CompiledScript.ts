@@ -5,7 +5,6 @@
  * @copyright Copyright (c) 2025 Arjun-M. This source code is licensed under the MIT license.
  */
 
-import ivm from 'isolated-vm';
 import type { CompiledScriptData, Language } from './types.js';
 
 /**
@@ -86,28 +85,4 @@ export class CompiledScript {
       compiledAt: this.compiledAt,
     };
   }
-
-  /**
-   * Run the script in the given context.
-   * NOTE: This method is currently not used by IsoBox.run, which uses ExecutionEngine.
-   * It is left here for potential future use, but it should be noted that it
-   * re-compiles the script every time, defeating the purpose of CompiledScript.
-   * The correct approach is to compile once and store the ivm.Script object.
-   * Since IsoBox.run uses ExecutionEngine, we will focus on fixing the core class.
-   *
-   * The IsoBox.compile method (in IsoBox.ts) is also broken as it only returns a string.
-   *
-   * For now, we will fix IsoBox.compile to return a proper CompiledScript object
-   * that can be used by ExecutionEngine.executeScript.
-   *
-   * The run method in CompiledScript is flawed because it re-compiles.
-   * We will remove it as it is not used and is misleading.
-   */
-  // async run<T = any>(
-  //   context: ivm.Context,
-  //   isolate: ivm.Isolate,
-  //   timeout?: number
-  // ): Promise<T> {
-  //   // ... (removed flawed implementation)
-  // }
 }

@@ -170,7 +170,7 @@ export class IsoBox {
 
   private validateOptions(): void {
     if (this.timeout < 0) throw new SandboxError('timeout must be non-negative', 'INVALID_OPTION');
-    if (this.memoryLimit < 1024 * 1024) throw new SandboxError('memoryLimit must be > 1MB', 'INVALID_OPTION');
+    if (this.memoryLimit < 10 * 1024 * 1024) throw new SandboxError('memoryLimit must be >= 10MB', 'INVALID_OPTION');
     if (this.cpuTimeLimit < 0) throw new SandboxError('cpuTimeLimit must be non-negative', 'INVALID_OPTION');
     if (this.fsMaxSize < 1024 * 1024) throw new SandboxError('FS quota must be > 1MB', 'INVALID_OPTION');
   }
@@ -182,7 +182,7 @@ export class IsoBox {
    * injects globals, and runs the code with timeout and resource monitoring.
    *
    * @template T - Expected return type of the code execution
-   * @param {string} code - JavaScript/TypeScript code to execute
+   * @param {string | CompiledScript} code - JavaScript/TypeScript code to execute, or a CompiledScript object
    * @param {RunOptions} [opts={}] - Execution options
    * @param {number} [opts.timeout] - Override default timeout
    * @param {string} [opts.filename] - Optional filename for better error messages
@@ -209,13 +209,22 @@ export class IsoBox {
    * const typed = await sandbox.run<string>('const x: number = 42; return x.toString();', {
    *   language: 'typescript'
    * });
+   *
+   * // Compiled script
+   * const compiled = await sandbox.compile('return 1 + 1');
+   * const result = await sandbox.run(compiled);
    * ```
    */
-  async run<T = any>(code: string, opts: RunOptions = {}): Promise<T> {
+  async run<T = any>(code: string | CompiledScript, opts: RunOptions = {}): Promise<T> {
     this.ensureNotDisposed();
 
-    if (!code?.trim()) {
+    if (!code) {
       throw new SandboxError('Code cannot be empty', 'EMPTY_CODE');
+    }
+
+    // Check if code is a string and verify it's not empty/whitespace
+    if (typeof code === 'string' && !code.trim()) {
+        throw new SandboxError('Code cannot be empty', 'EMPTY_CODE');
     }
 
     const timeout = opts.timeout ?? this.timeout;
@@ -239,7 +248,12 @@ export class IsoBox {
     try {
       if (this.isolatePool) {
         // Pool execution now returns full ExecutionResult
-        execResult = await this.isolatePool.execute<T>(code, { timeout: opts.timeout ?? this.timeout });
+        // Note: IsolatePool currently only accepts string code.
+        // Updating IsolatePool to support CompiledScript would be ideal but might be out of scope for this fix.
+        // For now, if pooling is used, we extract code string.
+        const codeString = typeof code === 'string' ? code : code.getCompiled();
+
+        execResult = await this.isolatePool.execute<T>(codeString, { timeout: opts.timeout ?? this.timeout });
         result = execResult.value;
       } else {
         const { isolate: newIsolate } = this.isolateManager.create({
@@ -260,56 +274,75 @@ export class IsoBox {
         // Pass context to builder to enable virtual module loading
         const contextObj = await builder.build(opts.filename || 'script', context);
 
+        // Helper to recursively inject objects
+        const injectValue = (target: ivm.Reference, key: string | number, value: any) => {
+             // console.log(`Injecting ${key} into target`, value);
+             if (value === null || value === undefined) {
+                 // Try setting directly (might fail if key is numeric string for array, but generally safe)
+                 try {
+                     target.setSync(key, value);
+                 } catch (e) { /* ignore */ }
+                 return;
+             }
+
+             if (typeof value === 'function') {
+                 const callback = new ivm.Callback(value);
+                 callbacks.push(callback);
+                 target.setSync(key, callback); // No copy: true for callbacks
+                 return;
+             }
+
+             // Check if object/array has functions deeply nested
+             const hasFunctions = (obj: any, visited = new Set()): boolean => {
+                 if (typeof obj !== 'object' || obj === null) return false;
+                 if (visited.has(obj)) return false; // Cycle detection
+                 visited.add(obj);
+
+                 return Object.values(obj).some(v =>
+                     typeof v === 'function' ||
+                     (typeof v === 'object' && v !== null && hasFunctions(v, visited))
+                 );
+             };
+
+             if (typeof value === 'object') {
+                 if (hasFunctions(value)) {
+                     // Need to recreate structure in VM
+                     if (Array.isArray(value)) {
+                         const ref = context.evalSync('[]', { reference: true });
+                         target.setSync(key, ref);
+                         for (let i = 0; i < value.length; i++) {
+                             injectValue(ref, i, value[i]);
+                         }
+                     } else {
+                         const ref = context.evalSync('({})', { reference: true });
+                         target.setSync(key, ref);
+                         for (const prop of Object.keys(value)) {
+                             injectValue(ref, prop, value[prop]);
+                         }
+                     }
+                 } else {
+                     // Pure data, safe to copy
+                     try {
+                        target.setSync(key, value, { copy: true });
+                     } catch(e) {
+                         // Fallback
+                         target.setSync(key, String(value), { copy: true });
+                     }
+                 }
+                 return;
+             }
+
+             // Primitives
+             target.setSync(key, value, { copy: true });
+        };
+
         // MAJOR FIX: Proper context injection with correct type handling
         if (contextObj._globals) {
           const failedGlobals: string[] = [];
           for (const key of Object.keys(contextObj._globals)) {
             const value = contextObj._globals[key];
             try {
-              if (typeof value === 'function') {
-                // Functions must be wrapped in ivm.Callback
-                const callback = new ivm.Callback(value);
-                callbacks.push(callback);
-                global.setSync(key, callback);
-              } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                // For objects, check if they have methods
-                const hasFunctions = Object.values(value).some(v => typeof v === 'function');
-
-                if (hasFunctions) {
-                  // Create empty ref and populate with mixed content
-                  const ref = context.evalSync('({})', { reference: true });
-                  global.setSync(key, ref);
-
-                  for (const prop of Object.keys(value)) {
-                    const propVal = value[prop];
-                    try {
-                      if (typeof propVal === 'function') {
-                        const callback = new ivm.Callback(propVal);
-                        callbacks.push(callback);
-                        ref.setSync(prop, callback);
-                      } else if (typeof propVal === 'object' && propVal !== null) {
-                        try {
-                          ref.setSync(prop, propVal, { copy: true });
-                        } catch (e) {
-                          ref.setSync(prop, String(propVal), { copy: true });
-                        }
-                      } else {
-                        ref.setSync(prop, propVal, { copy: true });
-                      }
-                    } catch (e) {
-                      logger.warn(`Failed to inject property '${key}.${prop}': ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                  }
-                } else {
-                  // Pure data object (or empty object)
-                  global.setSync(key, value, { copy: true });
-                }
-              } else if (Array.isArray(value)) {
-                global.setSync(key, value, { copy: true });
-              } else {
-                // Primitives
-                global.setSync(key, value, { copy: true });
-              }
+                injectValue(global, key, value);
             } catch (e) {
               logger.warn(`Failed to inject global '${key}': ${e instanceof Error ? e.message : String(e)}`);
               failedGlobals.push(key);
@@ -325,14 +358,21 @@ export class IsoBox {
           }
         }
 
-        execResult = await this.executionEngine.execute<T>(code, isolate, context, {
+        const executeOptions = {
           timeout,
           cpuTimeLimit: this.cpuTimeLimit,
           memoryLimit: this.memoryLimit,
           strictTimeout: this.strictTimeout,
           filename: opts.filename,
-          code,
-        });
+          // code is optional in ExecuteOptions
+        };
+
+        if (typeof code === 'string') {
+            execResult = await this.executionEngine.execute<T>(code, isolate, context, { ...executeOptions, code });
+        } else {
+            // CompiledScript
+            execResult = await this.executionEngine.executeScript<T>(code, isolate, context, executeOptions);
+        }
 
         if (execResult.error) {
           throw execResult.error;
