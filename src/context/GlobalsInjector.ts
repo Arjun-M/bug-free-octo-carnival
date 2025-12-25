@@ -48,8 +48,12 @@ export class GlobalsInjector {
    */
   getSafeGlobals(): Record<string, any> {
     // isolated-vm provides standard JS globals (Object, Array, etc.) intrinsically.
-    // We should NOT inject Host versions of these.
-    return {};
+    // However, explicitly ensuring these are available can be helpful if context setup varies.
+    // We explicitly explicitly rely on the VM's intrinsic globals.
+    // If we wanted to polyfill missing ones, we would do it here.
+    return {
+      // Standard globals like Object, Array, Date, Promise are provided by the Isolate.
+    };
   }
 
   /**
@@ -61,7 +65,7 @@ export class GlobalsInjector {
     if (this.allowTimers) {
       // Wrapper for setTimeout to handle ivm.Callback/Reference
       globals['setTimeout'] = (callback: any, delay: number, ...args: any[]) => {
-          // CRITICAL FIX: Ensure callback is an ivm.Reference (which includes ivm.Callback)
+          // Ensure callback is an ivm.Reference (which includes ivm.Callback)
           // This prevents arbitrary host functions from being executed by the sandbox.
           if (callback instanceof ivm.Reference) {
               const id = ++this.timerIdCounter;
@@ -79,10 +83,10 @@ export class GlobalsInjector {
               return id; // Return primitive ID
           }
           return 0; // Return 0 for invalid callback
-      }; // CRITICAL FIX: Missing semicolon/closing brace for setTimeout
+      };
 
       globals['setInterval'] = (callback: any, delay: number, ...args: any[]) => {
-         // CRITICAL FIX: Ensure callback is an ivm.Reference
+         // Ensure callback is an ivm.Reference
          if (callback instanceof ivm.Reference) {
              const id = ++this.timerIdCounter;
              const timer = setInterval(() => {
@@ -99,7 +103,7 @@ export class GlobalsInjector {
              return id; // Return primitive ID
          }
          return 0; // Return 0 for invalid callback
-      }; // CRITICAL FIX: Missing semicolon/closing brace for setInterval
+      };
 
       globals['clearTimeout'] = (id: any) => {
           if (typeof id === 'number' && this.activeTimers.has(id)) {
