@@ -12,6 +12,7 @@ import { PooledIsolate } from './PooledIsolate.js';
 import { PoolStatsTracker, type PoolStats } from './PoolStats.js';
 import { AsyncQueue } from '../utils/AsyncQueue.js';
 import { logger } from '../utils/Logger.js';
+import type { Context } from 'isolated-vm';
 
 /**
  * Connection pool for reusing isolates to improve performance.
@@ -147,11 +148,17 @@ export class IsolatePool {
     const start = Date.now();
     let cpuTime = 0;
     let resourceStats;
+    let context: Context | undefined;
 
     try {
+      // Create a fresh context for each execution to ensure isolation
+      // Reusing contexts without clearing global state is dangerous
+      // PooledIsolate maintains the Isolate but we should cycle the Context
+      context = await pooledIsolate.isolate.createContext();
+
       // Execute within the pooled context
       const script = await pooledIsolate.isolate.compileScript(code);
-      const result = await script.run(pooledIsolate.context, {
+      const result = await script.run(context, { // Use new context
         timeout: options.timeout,
         promise: true,
       });
@@ -185,6 +192,10 @@ export class IsolatePool {
       pooledIsolate.setUnhealthy();
       throw error;
     } finally {
+      // Explicitly release context to avoid memory leaks
+      if (context) {
+        context.release();
+      }
       this.release(pooledIsolate);
     }
   }

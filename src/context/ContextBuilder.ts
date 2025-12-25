@@ -65,7 +65,7 @@ export class ContextBuilder {
 
     const consoleMode: ConsoleMode = options.console?.mode ?? 'inherit';
 
-    // Fix: Pass original arguments to onOutput callback if available
+    // Pass original arguments to onOutput callback if available
     const onOutputAdapter = options.console?.onOutput
       ? (type: string, message: string, args?: any[]) => {
           // Map type string to allowed levels
@@ -140,7 +140,7 @@ export class ContextBuilder {
     context._console_log = (...args: any[]) => handler.handleOutput('log', args);
     context._console_error = (...args: any[]) => handler.handleOutput('error', args);
     context._console_warn = (...args: any[]) => handler.handleOutput('warn', args);
-    context._console_info = (...args: any[]) => handler.handleOutput('info', args); // MINOR FIX: Map info to info
+    context._console_info = (...args: any[]) => handler.handleOutput('info', args); // Map info to info
     context._console_debug = (...args: any[]) => handler.handleOutput('debug', args);
 
     const console_obj = {
@@ -164,9 +164,9 @@ export class ContextBuilder {
     const memfs = this.memfs;
 
     const fs_obj = {
-      // MAJOR FIX: Removed .toString() to allow binary data transfer
+      // Removed .toString() to allow binary data transfer
       write: (path: string, content: string | Buffer) => memfs.write(path, content),
-      // MAJOR FIX: Use ivm.ExternalCopy for safe Buffer transfer across boundary
+      // Use ivm.ExternalCopy for safe Buffer transfer across boundary
       read: (path: string) => {
         const buffer = memfs.read(path);
         return new ivm.ExternalCopy(buffer).copyInto();
@@ -238,14 +238,14 @@ export class ContextBuilder {
             // Execute runner with the compiled script reference
             return runner.applySync(undefined, [script, filename, scopedRequire], { result: { copy: true, reference: false } });
         } finally {
-            // scopedRequire.dispose(); // MOVED to disposables
+            // Callback lifecycle managed by disposables
             runner.dispose();
             script.release();
         }
       };
     }
 
-    // MAJOR FIX: The require function should only take moduleName in sandbox context.
+    // The require function should only take moduleName in sandbox context.
     // The fromPath should default to '/' since modules are loaded from MemFS root.
     const require_fn = (moduleName: string) => {
       // If we have an executor (context available), use it.
@@ -259,7 +259,7 @@ export class ContextBuilder {
 
   private async injectSandbox(context: Record<string, any>): Promise<void> {
     for (const [key, value] of Object.entries(this.sandbox)) {
-      // MAJOR FIX: Allow non-serializable values to be passed directly.
+      // Allow non-serializable values to be passed directly.
       // IsoBox.run will handle the ivm.Callback wrapping for functions.
       context._globals[key] = value;
     }
