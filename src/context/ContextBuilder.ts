@@ -215,7 +215,8 @@ export class ContextBuilder {
             const __dirname = filename.split('/').slice(0, -1).join('/') || '/';
 
             // Execute the compiled module function
-            moduleFn.apply(undefined, [module.exports, requireFn, module, __filename, __dirname]);
+            // FIX: Set 'this' to exports, matching CommonJS behavior
+            moduleFn.apply(module.exports, [module.exports, requireFn, module, __filename, __dirname]);
             return module.exports;
           })
         `, { reference: true });
